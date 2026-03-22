@@ -1,0 +1,223 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Math Tutoring App - AWS Infrastructure
+
+Parameters:
+  TutorEmail:
+    Type: String
+    Description: The tutor's email address
+  AppDomain:
+    Type: String
+    Default: ''
+    Description: Custom domain (leave empty to use Amplify default)
+
+Resources:
+  # ── Cognito User Pool ──
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: math-tutoring-users
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: math-tutoring-web
+      UserPoolId: !Ref UserPool
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      PreventUserExistenceErrors: ENABLED
+
+  TutorsGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: tutors
+      UserPoolId: !Ref UserPool
+      Description: Tutor users who can upload completed notes
+
+  # ── S3 Bucket ──
+  FilesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'math-tutoring-files-${AWS::AccountId}'
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST]
+            AllowedOrigins: ['*']
+            MaxAge: 3600
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # ── DynamoDB Tables ──
+  SessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: math-tutoring-sessions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: studentSub
+          AttributeType: S
+        - AttributeName: scheduledAt
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: studentSub-scheduledAt-index
+          KeySchema:
+            - AttributeName: studentSub
+              KeyType: HASH
+            - AttributeName: scheduledAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: status-scheduledAt-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: scheduledAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: math-tutoring-users
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: sub
+          AttributeType: S
+      KeySchema:
+        - AttributeName: sub
+          KeyType: HASH
+
+  # ── Availability Table (tutor schedule) ──
+  AvailabilityTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: math-tutoring-availability
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+
+  # ── Lambda for Session Reminders ──
+  ReminderLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ReminderLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:Scan
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt SessionsTable.Arn
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                Resource: '*'
+
+  ReminderLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: math-tutoring-session-reminder
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt ReminderLambdaRole.Arn
+      Timeout: 60
+      Environment:
+        Variables:
+          SESSIONS_TABLE: !Ref SessionsTable
+          FROM_EMAIL: !Ref TutorEmail
+          TUTOR_EMAIL: !Ref TutorEmail
+          TUTOR_NAME: Math Tutor
+          TUTOR_TIMEZONE: America/Los_Angeles
+      Code:
+        ZipFile: |
+          // Deploy the actual code from infrastructure/lambda/session-reminder/index.mjs
+          // This is a placeholder - use AWS CLI or CI/CD to deploy the real code
+          export async function handler() { return { statusCode: 200 }; }
+
+  # ── EventBridge Rule (every 30 minutes) ──
+  ReminderScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: math-tutoring-reminder-schedule
+      Description: Trigger session reminder Lambda every 15 minutes
+      ScheduleExpression: 'rate(15 minutes)'
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt ReminderLambda.Arn
+          Id: ReminderLambdaTarget
+
+  ReminderLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ReminderLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ReminderScheduleRule.Arn
+
+Outputs:
+  UserPoolId:
+    Value: !Ref UserPool
+    Description: Cognito User Pool ID
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+    Description: Cognito User Pool Client ID
+  S3BucketName:
+    Value: !Ref FilesBucket
+    Description: S3 bucket for file storage
+  SessionsTableName:
+    Value: !Ref SessionsTable
+    Description: DynamoDB sessions table name
+  UsersTableName:
+    Value: !Ref UsersTable
+    Description: DynamoDB users table name
+  AvailabilityTableName:
+    Value: !Ref AvailabilityTable
+    Description: DynamoDB availability table name
