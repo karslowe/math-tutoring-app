@@ -43,10 +43,7 @@ export default function AvailabilityEditor({
   } | null>(null);
 
   useEffect(() => {
-    loadAvailability();
-  }, []);
-
-  async function loadAvailability() {
+    async function loadAvailability() {
     try {
       const token = await getToken();
       const res = await fetch("/api/availability", {
@@ -70,6 +67,10 @@ export default function AvailabilityEditor({
       setLoading(false);
     }
   }
+
+    loadAvailability();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function addSlot(dayIndex: number) {
     setSchedule((prev) => {

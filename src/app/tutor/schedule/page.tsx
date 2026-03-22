@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import AvailabilityEditor from "@/components/AvailabilityEditor";
@@ -29,48 +29,84 @@ interface DateOverrideItem {
 
 export default function TutorSchedulePage() {
   const { getToken, getIdToken } = useAuth();
-  const [activeTab, setActiveTab] = useState<"availability" | "sessions" | "overrides">("availability");
+  const [activeTab, setActiveTab] = useState<
+    "availability" | "sessions" | "overrides"
+  >("availability");
   const [sessions, setSessions] = useState<BookedSession[]>([]);
-  const [loadingSessions, setLoadingSessions] = useState(true);
+  const [loadingSessions, setLoadingSessions] = useState(false);
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
 
   // Override state
   const [overrideDate, setOverrideDate] = useState("");
   const [overrides, setOverrides] = useState<DateOverrideItem[]>([]);
+  const [loadingOverrides, setLoadingOverrides] = useState(false);
   const [savingOverride, setSavingOverride] = useState(false);
   const [overrideMessage, setOverrideMessage] = useState("");
 
   const weekEnd = endOfWeek(weekStart);
 
-  const loadSessions = useCallback(async () => {
-    const token = await getToken();
-    const idToken = await getIdToken();
-    if (!token) return;
+  // Load sessions when tab is active or week changes
+  useEffect(() => {
+    if (activeTab !== "sessions") return;
 
-    setLoadingSessions(true);
-    try {
-      const start = format(weekStart, "yyyy-MM-dd");
-      const end = format(weekEnd, "yyyy-MM-dd");
+    async function loadSessions() {
+      const token = await getToken();
+      const idToken = await getIdToken();
+      if (!token) return;
 
-      const res = await fetch(
-        `/api/tutor/bookings?startDate=${start}&endDate=${end}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            ...(idToken ? { "x-id-token": idToken } : {}),
-          },
-        }
-      );
-      const data = await res.json();
-      setSessions(data.sessions || []);
-    } catch (error) {
-      console.error("Failed to load sessions:", error);
-    } finally {
-      setLoadingSessions(false);
+      setLoadingSessions(true);
+      try {
+        const start = format(weekStart, "yyyy-MM-dd");
+        const end = format(endOfWeek(weekStart), "yyyy-MM-dd");
+
+        const res = await fetch(
+          `/api/tutor/bookings?startDate=${start}&endDate=${end}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              ...(idToken ? { "x-id-token": idToken } : {}),
+            },
+          }
+        );
+        const data = await res.json();
+        setSessions(data.sessions || []);
+      } catch (error) {
+        console.error("Failed to load sessions:", error);
+      } finally {
+        setLoadingSessions(false);
+      }
     }
-  }, [getToken, getIdToken, weekStart, weekEnd]);
 
-  const loadOverrides = useCallback(async () => {
+    loadSessions();
+  }, [activeTab, weekStart, getToken, getIdToken]);
+
+  // Load overrides when tab is active
+  useEffect(() => {
+    if (activeTab !== "overrides") return;
+
+    async function loadOverrides() {
+      const token = await getToken();
+      if (!token) return;
+
+      setLoadingOverrides(true);
+      try {
+        const res = await fetch(
+          `/api/availability/overrides?startDate=2020-01-01&endDate=2030-12-31`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const data = await res.json();
+        setOverrides(data.overrides || []);
+      } catch (error) {
+        console.error("Failed to load overrides:", error);
+      } finally {
+        setLoadingOverrides(false);
+      }
+    }
+
+    loadOverrides();
+  }, [activeTab, getToken]);
+
+  async function refreshOverrides() {
     const token = await getToken();
     if (!token) return;
 
@@ -82,14 +118,9 @@ export default function TutorSchedulePage() {
       const data = await res.json();
       setOverrides(data.overrides || []);
     } catch (error) {
-      console.error("Failed to load overrides:", error);
+      console.error("Failed to refresh overrides:", error);
     }
-  }, [getToken]);
-
-  useEffect(() => {
-    loadSessions();
-    loadOverrides();
-  }, [loadSessions, loadOverrides]);
+  }
 
   async function handleBlockDate() {
     if (!overrideDate) return;
@@ -107,13 +138,17 @@ export default function TutorSchedulePage() {
           Authorization: `Bearer ${token}`,
           ...(idToken ? { "x-id-token": idToken } : {}),
         },
-        body: JSON.stringify({ date: overrideDate, available: false, slots: [] }),
+        body: JSON.stringify({
+          date: overrideDate,
+          available: false,
+          slots: [],
+        }),
       });
 
       if (!res.ok) throw new Error("Failed to save override");
       setOverrideMessage(`Blocked ${overrideDate}`);
       setOverrideDate("");
-      await loadOverrides();
+      await refreshOverrides();
     } catch (error) {
       setOverrideMessage("Failed to block date");
     } finally {
@@ -134,7 +169,7 @@ export default function TutorSchedulePage() {
           ...(idToken ? { "x-id-token": idToken } : {}),
         },
       });
-      await loadOverrides();
+      await refreshOverrides();
     } catch (error) {
       console.error("Failed to remove override:", error);
     }
@@ -177,16 +212,14 @@ export default function TutorSchedulePage() {
           ))}
         </div>
 
-        {/* Availability tab */}
-        {activeTab === "availability" && (
-          <div>
-            <p className="text-sm text-gray-600 mb-4">
-              Set your weekly availability. Add time windows for each day you
-              want to offer tutoring sessions.
-            </p>
-            <AvailabilityEditor getToken={getToken} getIdToken={getIdToken} />
-          </div>
-        )}
+        {/* Availability tab — use display:none to keep state alive */}
+        <div style={{ display: activeTab === "availability" ? "block" : "none" }}>
+          <p className="text-sm text-gray-600 mb-4">
+            Set your weekly availability. Add time windows for each day you want
+            to offer tutoring sessions.
+          </p>
+          <AvailabilityEditor getToken={getToken} getIdToken={getIdToken} />
+        </div>
 
         {/* Overrides tab */}
         {activeTab === "overrides" && (
@@ -218,7 +251,16 @@ export default function TutorSchedulePage() {
             </div>
 
             {/* List of blocked dates */}
-            {overrides.length === 0 ? (
+            {loadingOverrides ? (
+              <div className="space-y-3">
+                {[...Array(2)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="animate-pulse bg-gray-100 rounded-xl h-14"
+                  />
+                ))}
+              </div>
+            ) : overrides.length === 0 ? (
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center">
                 <p className="text-gray-500 text-sm">No blocked dates.</p>
               </div>
@@ -234,7 +276,10 @@ export default function TutorSchedulePage() {
                       <div className="flex items-center gap-3">
                         <span className="w-2 h-2 bg-red-500 rounded-full" />
                         <span className="text-sm font-medium text-gray-900">
-                          {format(parseISO(override.sk), "EEEE, MMMM d, yyyy")}
+                          {format(
+                            parseISO(override.sk),
+                            "EEEE, MMMM d, yyyy"
+                          )}
                         </span>
                         <span className="text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
                           Blocked

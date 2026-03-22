@@ -41,8 +41,8 @@ export async function GET(request: NextRequest) {
       getWeeklyAvailability(),
       getDateOverrides(startDate, endDate),
       getScheduledSessionsByDateRange(
-        new Date(startDate).toISOString(),
-        new Date(endDate + "T23:59:59").toISOString()
+        startDate + "T00:00:00.000Z",
+        endDate + "T23:59:59.999Z"
       ),
     ]);
 
