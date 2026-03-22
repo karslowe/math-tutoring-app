@@ -10,6 +10,7 @@ export const awsConfig = {
   dynamodb: {
     sessionsTable: process.env.DYNAMODB_TABLE_SESSIONS || "math-tutoring-sessions",
     usersTable: process.env.DYNAMODB_TABLE_USERS || "math-tutoring-users",
+    availabilityTable: process.env.DYNAMODB_TABLE_AVAILABILITY || "math-tutoring-availability",
   },
   ses: {
     fromEmail: process.env.SES_FROM_EMAIL || "",

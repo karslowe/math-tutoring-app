@@ -11,6 +11,7 @@ import {
 import {
   getCurrentUser,
   getIdToken,
+  getAccessToken,
   signIn as cognitoSignIn,
   signUp as cognitoSignUp,
   confirmSignUp as cognitoConfirmSignUp,
@@ -34,6 +35,7 @@ interface AuthContextType {
     newPassword: string
   ) => Promise<void>;
   getToken: () => Promise<string | null>;
+  getIdToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -88,6 +90,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const getToken = useCallback(async () => {
+    return getAccessToken();
+  }, []);
+
+  const handleGetIdToken = useCallback(async () => {
     return getIdToken();
   }, []);
 
@@ -103,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         forgotPassword: handleForgotPassword,
         confirmNewPassword: handleConfirmNewPassword,
         getToken,
+        getIdToken: handleGetIdToken,
       }}
     >
       {children}

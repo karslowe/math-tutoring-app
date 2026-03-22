@@ -77,6 +77,26 @@ export function getIdToken(): Promise<string | null> {
   });
 }
 
+export function getAccessToken(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const pool = getUserPool();
+    const cognitoUser = pool.getCurrentUser();
+    if (!cognitoUser) {
+      resolve(null);
+      return;
+    }
+    cognitoUser.getSession(
+      (err: Error | null, session: CognitoUserSession | null) => {
+        if (err || !session || !session.isValid()) {
+          resolve(null);
+          return;
+        }
+        resolve(session.getAccessToken().getJwtToken());
+      }
+    );
+  });
+}
+
 export function signIn(
   username: string,
   password: string
