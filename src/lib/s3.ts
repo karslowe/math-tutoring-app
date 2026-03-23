@@ -10,6 +10,7 @@ import { awsConfig } from "./aws-config";
 
 const s3Client = new S3Client({
   region: awsConfig.region,
+  ...(awsConfig.credentials.accessKeyId ? { credentials: awsConfig.credentials } : {}),
 });
 
 const BUCKET = awsConfig.s3.bucketName;

@@ -2,7 +2,10 @@ import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { formatInTimeZone } from "date-fns-tz";
 import { awsConfig } from "./aws-config";
 
-const sesClient = new SESClient({ region: awsConfig.region });
+const sesClient = new SESClient({
+  region: awsConfig.region,
+  ...(awsConfig.credentials.accessKeyId ? { credentials: awsConfig.credentials } : {}),
+});
 
 const TUTOR_TIMEZONE =
   process.env.TUTOR_TIMEZONE || "America/Los_Angeles";

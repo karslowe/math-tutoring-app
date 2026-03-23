@@ -6,6 +6,7 @@ import { awsConfig } from "./aws-config";
 
 const cognitoClient = new CognitoIdentityProviderClient({
   region: awsConfig.region,
+  ...(awsConfig.credentials.accessKeyId ? { credentials: awsConfig.credentials } : {}),
 });
 
 export interface TokenUser {

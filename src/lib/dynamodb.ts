@@ -11,7 +11,10 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { awsConfig } from "./aws-config";
 
-const client = new DynamoDBClient({ region: awsConfig.region });
+const client = new DynamoDBClient({
+  region: awsConfig.region,
+  ...(awsConfig.credentials.accessKeyId ? { credentials: awsConfig.credentials } : {}),
+});
 const docClient = DynamoDBDocumentClient.from(client);
 
 // ── Topic Mastery ──
