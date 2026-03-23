@@ -15,6 +15,7 @@ interface IdTokenPayload {
 
 const cognitoClient = new CognitoIdentityProviderClient({
   region: awsConfig.region,
+  ...(awsConfig.credentials.accessKeyId ? { credentials: awsConfig.credentials } : {}),
 });
 
 export async function GET(request: NextRequest) {
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("List students error:", error);
     return NextResponse.json(
-      { error: "Failed to list students" },
+      { error: "Failed to list students", detail: error.message || String(error) },
       { status: 500 }
     );
   }
