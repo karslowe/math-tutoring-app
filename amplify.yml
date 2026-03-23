@@ -6,6 +6,10 @@ frontend:
         - npm ci
     build:
       commands:
+        - export AWS_REGION=$APP_AWS_REGION
+        - export AWS_ACCESS_KEY_ID=$APP_ACCESS_KEY_ID
+        - export AWS_SECRET_ACCESS_KEY=$APP_SECRET_ACCESS_KEY
+        - export AWS_S3_BUCKET_NAME=$APP_S3_BUCKET_NAME
         - npm run build
   artifacts:
     baseDirectory: .next
