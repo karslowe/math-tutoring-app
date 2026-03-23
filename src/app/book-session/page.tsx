@@ -31,6 +31,7 @@ export default function BookSessionPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [freeCredits, setFreeCredits] = useState(0);
 
   const markedDates = new Set(
     slotsData.filter((d) => d.slots.length > 0).map((d) => d.date)
@@ -76,10 +77,25 @@ export default function BookSessionPage() {
     }
   }, [getToken]);
 
+  const loadCredits = useCallback(async () => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const res = await fetch("/api/profile/credits", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFreeCredits(data.credits || 0);
+      }
+    } catch {}
+  }, [getToken]);
+
   useEffect(() => {
     loadSlots();
     loadBookings();
-  }, [loadSlots, loadBookings]);
+    loadCredits();
+  }, [loadSlots, loadBookings, loadCredits]);
 
   function handleDateSelect(date: Date) {
     setSelectedDate(date);
@@ -91,7 +107,7 @@ export default function BookSessionPage() {
     setShowModal(true);
   }
 
-  async function handleBookConfirm(subject: string) {
+  async function handleBookConfirm(subject: string, useFreeCredit: boolean) {
     const token = await getToken();
     if (!token || !selectedSlot) return;
 
@@ -101,7 +117,7 @@ export default function BookSessionPage() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ scheduledAt: selectedSlot, subject }),
+      body: JSON.stringify({ scheduledAt: selectedSlot, subject, useFreeCredit }),
     });
 
     if (!res.ok) {
@@ -112,7 +128,7 @@ export default function BookSessionPage() {
     setShowModal(false);
     setSelectedSlot(null);
     // Refresh data
-    await Promise.all([loadSlots(), loadBookings()]);
+    await Promise.all([loadSlots(), loadBookings(), loadCredits()]);
   }
 
   async function handleCancel(sessionId: string) {
@@ -262,6 +278,7 @@ export default function BookSessionPage() {
               setShowModal(false);
               setSelectedSlot(null);
             }}
+            freeCredits={freeCredits}
           />
         )}
       </div>

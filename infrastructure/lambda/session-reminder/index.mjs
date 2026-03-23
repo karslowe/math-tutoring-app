@@ -72,7 +72,7 @@ export async function handler() {
           },
           Message: {
             Subject: {
-              Data: `Reminder: KL Math Session in 1 Hour - ${formattedDate}`,
+              Data: `Reminder: KL Math Prep Session in 1 Hour - ${formattedDate}`,
             },
             Body: {
               Html: {
@@ -99,7 +99,7 @@ export async function handler() {
                 `,
               },
               Text: {
-                Data: `Reminder: You have a KL Math session in about 1 hour!\n\nStudent: ${studentName}\nDate & Time: ${formattedDate}\nDuration: ${session.duration} min\nSubject: ${session.subject}${ZOOM_LINK ? `\nZoom Link: ${ZOOM_LINK}` : ""}\n\nMake sure to upload any materials beforehand!\n\nBest,\n${TUTOR_NAME}`,
+                Data: `Reminder: You have a KL Math Prep session in about 1 hour!\n\nStudent: ${studentName}\nDate & Time: ${formattedDate}\nDuration: ${session.duration} min\nSubject: ${session.subject}${ZOOM_LINK ? `\nZoom Link: ${ZOOM_LINK}` : ""}\n\nMake sure to upload any materials beforehand!\n\nBest,\n${TUTOR_NAME}`,
               },
             },
           },

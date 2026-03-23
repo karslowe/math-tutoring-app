@@ -53,7 +53,7 @@ export async function sendSessionNoteEmail({
   const htmlBody = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: #4f46e5; padding: 24px; border-radius: 12px 12px 0 0;">
-        <h1 style="color: white; margin: 0; font-size: 20px;">KL Math - Session Notes</h1>
+        <h1 style="color: white; margin: 0; font-size: 20px;">KL Math Prep - Session Notes</h1>
       </div>
       <div style="background: #ffffff; padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
         <p style="color: #374151; margin: 0 0 8px;">Hi ${studentName},</p>
@@ -67,7 +67,7 @@ export async function sendSessionNoteEmail({
     </div>
   `;
 
-  const textBody = `KL Math - Session Notes\n\nHi ${studentName},\n\nHere are the notes from your recent tutoring session:\n\nSubject: ${subject}\n\n${notes}\n\nYou can also view this in your Session History on the tutoring portal.`;
+  const textBody = `KL Math Prep - Session Notes\n\nHi ${studentName},\n\nHere are the notes from your recent tutoring session:\n\nSubject: ${subject}\n\n${notes}\n\nYou can also view this in your Session History on the tutoring portal.`;
 
   await sesClient.send(
     new SendEmailCommand({
@@ -204,6 +204,102 @@ export async function sendBookingCancellationEmail({
       Destination: { ToAddresses: validRecipients },
       Message: {
         Subject: { Data: `Session Cancelled: ${subject} - ${dateStr}`, Charset: "UTF-8" },
+        Body: {
+          Html: { Data: htmlBody, Charset: "UTF-8" },
+          Text: { Data: textBody, Charset: "UTF-8" },
+        },
+      },
+    })
+  );
+}
+
+/**
+ * Send a referral invite email to a potential new student.
+ */
+export async function sendReferralInviteEmail({
+  to,
+  referrerName,
+  signupUrl,
+}: {
+  to: string;
+  referrerName: string;
+  signupUrl: string;
+}): Promise<void> {
+  const fromEmail = awsConfig.ses.fromEmail;
+  if (!fromEmail) return;
+  if (!to || !to.includes("@")) return;
+
+  const htmlBody = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #7c3aed; padding: 24px; border-radius: 12px 12px 0 0;">
+        <h1 style="color: white; margin: 0; font-size: 20px;">You've Been Invited to KL Math Prep!</h1>
+      </div>
+      <div style="background: #ffffff; padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+        <p style="color: #374151; margin: 0 0 8px;">Hi there,</p>
+        <p style="color: #6b7280; margin: 0 0 20px;">${referrerName} thinks you'd enjoy tutoring with KL Math Prep! Sign up using the link below and get a <strong>free session</strong> as a welcome gift.</p>
+        <a href="${signupUrl}" style="display: inline-block; background: #7c3aed; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 15px; margin: 0 0 20px;">Sign Up and Get Free Session</a>
+        <p style="color: #9ca3af; font-size: 13px; margin: 16px 0 0;">This invite expires in 7 days. If you didn't expect this email, you can safely ignore it.</p>
+      </div>
+    </div>
+  `;
+
+  const textBody = `You've been invited to KL Math Prep!\n\n${referrerName} thinks you'd enjoy tutoring with KL Math Prep. Sign up using this link and get a free session:\n\n${signupUrl}\n\nThis invite expires in 7 days.`;
+
+  await sesClient.send(
+    new SendEmailCommand({
+      Source: fromEmail,
+      Destination: { ToAddresses: [to] },
+      Message: {
+        Subject: { Data: `${referrerName} invited you to KL Math Prep - Get a free session!`, Charset: "UTF-8" },
+        Body: {
+          Html: { Data: htmlBody, Charset: "UTF-8" },
+          Text: { Data: textBody, Charset: "UTF-8" },
+        },
+      },
+    })
+  );
+}
+
+/**
+ * Send a notification to the referrer that they earned a free session credit.
+ */
+export async function sendReferralCreditEmail({
+  to,
+  referrerName,
+  referredStudentName,
+}: {
+  to: string;
+  referrerName: string;
+  referredStudentName: string;
+}): Promise<void> {
+  const fromEmail = awsConfig.ses.fromEmail;
+  if (!fromEmail) return;
+  if (!to || !to.includes("@")) return;
+
+  const htmlBody = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #059669; padding: 24px; border-radius: 12px 12px 0 0;">
+        <h1 style="color: white; margin: 0; font-size: 20px;">You Earned a Free Session!</h1>
+      </div>
+      <div style="background: #ffffff; padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+        <p style="color: #374151; margin: 0 0 8px;">Hi ${referrerName},</p>
+        <p style="color: #6b7280; margin: 0 0 20px;">Great news! ${referredStudentName} just completed their first tutoring session. As a thank you for referring them, you've earned a <strong>free session credit</strong>!</p>
+        <div style="background: #f0fdf4; border-left: 4px solid #059669; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 20px;">
+          <p style="color: #374151; margin: 0;">Your free session credit has been added to your account. Use it next time you book a session!</p>
+        </div>
+        <p style="color: #9ca3af; font-size: 13px; margin: 0;">Keep referring friends to earn more free sessions!</p>
+      </div>
+    </div>
+  `;
+
+  const textBody = `You Earned a Free Session!\n\nHi ${referrerName},\n\n${referredStudentName} just completed their first tutoring session. You've earned a free session credit!\n\nUse it next time you book a session. Keep referring friends to earn more!`;
+
+  await sesClient.send(
+    new SendEmailCommand({
+      Source: fromEmail,
+      Destination: { ToAddresses: [to] },
+      Message: {
+        Subject: { Data: "You earned a free session credit!", Charset: "UTF-8" },
         Body: {
           Html: { Data: htmlBody, Charset: "UTF-8" },
           Text: { Data: textBody, Charset: "UTF-8" },

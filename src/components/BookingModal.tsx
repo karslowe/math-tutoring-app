@@ -5,16 +5,19 @@ import { format, parseISO } from "date-fns";
 
 interface BookingModalProps {
   slot: string; // ISO datetime
-  onConfirm: (subject: string) => Promise<void>;
+  onConfirm: (subject: string, useFreeCredit: boolean) => Promise<void>;
   onCancel: () => void;
+  freeCredits?: number;
 }
 
 export default function BookingModal({
   slot,
   onConfirm,
   onCancel,
+  freeCredits = 0,
 }: BookingModalProps) {
-  const [subject, setSubject] = useState("KL Math");
+  const [subject, setSubject] = useState("KL Math Prep");
+  const [useFreeCredit, setUseFreeCredit] = useState(freeCredits > 0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -24,7 +27,7 @@ export default function BookingModal({
     setLoading(true);
     setError("");
     try {
-      await onConfirm(subject);
+      await onConfirm(subject, useFreeCredit && freeCredits > 0);
     } catch (err: any) {
       setError(err.message || "Failed to book session");
       setLoading(false);
@@ -67,6 +70,28 @@ export default function BookingModal({
           />
         </div>
 
+        {/* Free credit toggle */}
+        {freeCredits > 0 && (
+          <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useFreeCredit}
+                onChange={(e) => setUseFreeCredit(e.target.checked)}
+                className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500"
+              />
+              <div>
+                <p className="text-sm font-medium text-green-800">
+                  Use free session credit
+                </p>
+                <p className="text-xs text-green-600">
+                  You have {freeCredits} credit{freeCredits !== 1 ? "s" : ""} available
+                </p>
+              </div>
+            </label>
+          </div>
+        )}
+
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
             {error}
@@ -86,7 +111,7 @@ export default function BookingModal({
             disabled={loading}
             className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
-            {loading ? "Booking..." : "Book Session"}
+            {loading ? "Booking..." : useFreeCredit && freeCredits > 0 ? "Book Free Session" : "Book Session"}
           </button>
         </div>
       </div>

@@ -21,6 +21,7 @@ interface BookedSession {
   scheduledAt: string;
   subject: string;
   duration: number;
+  paidWithCredit?: boolean;
 }
 
 interface DateOverrideItem {
@@ -389,9 +390,16 @@ export default function TutorSchedulePage() {
                           <p className="text-sm font-medium text-gray-700">
                             {session.studentName || session.studentEmail}
                           </p>
-                          <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-                            Booked
-                          </span>
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                              Booked
+                            </span>
+                            {session.paidWithCredit && (
+                              <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
+                                Free
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>

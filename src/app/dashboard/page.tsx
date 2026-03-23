@@ -26,6 +26,8 @@ export default function DashboardPage() {
   const { user, getToken } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
+  const [credits, setCredits] = useState(0);
+  const [referralMessage, setReferralMessage] = useState("");
 
   const isStudent = !user?.groups?.includes("tutors");
   const zoomLink = process.env.NEXT_PUBLIC_ZOOM_LINK || "";
@@ -42,15 +44,61 @@ export default function DashboardPage() {
         setBookings(data.bookings || []);
       }
     } catch {
-      // silently fail - not critical for dashboard
+      // silently fail
     } finally {
       setLoadingBookings(false);
     }
   }, [isStudent, getToken]);
 
+  const fetchCredits = useCallback(async () => {
+    if (!isStudent) return;
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/profile/credits", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCredits(data.credits || 0);
+      }
+    } catch {
+      // silently fail
+    }
+  }, [isStudent, getToken]);
+
+  // Redeem referral token from sessionStorage (after signup)
+  const redeemReferral = useCallback(async () => {
+    if (!isStudent) return;
+    const referralToken = sessionStorage.getItem("referralToken");
+    if (!referralToken) return;
+
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/referrals/redeem", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token: referralToken }),
+      });
+
+      if (res.ok) {
+        setReferralMessage("Welcome! You received a free session credit from your referral!");
+        fetchCredits();
+      }
+    } catch {
+      // silently fail
+    } finally {
+      sessionStorage.removeItem("referralToken");
+    }
+  }, [isStudent, getToken, fetchCredits]);
+
   useEffect(() => {
     fetchBookings();
-  }, [fetchBookings]);
+    fetchCredits();
+    redeemReferral();
+  }, [fetchBookings, fetchCredits, redeemReferral]);
 
   return (
     <ProtectedRoute>
@@ -117,6 +165,23 @@ export default function DashboardPage() {
         ) : (
           /* ── Student Dashboard ── */
           <div className="space-y-6">
+            {/* Referral welcome message */}
+            {referralMessage && (
+              <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
+                <p className="text-sm text-purple-800 font-medium">{referralMessage}</p>
+              </div>
+            )}
+
+            {/* Free credits banner */}
+            {credits > 0 && (
+              <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                <span className="text-lg">🎉</span>
+                <p className="text-sm text-green-800 font-medium">
+                  You have {credits} free session credit{credits !== 1 ? "s" : ""}! Use it when booking your next session.
+                </p>
+              </div>
+            )}
+
             {/* Top Row: Book a Session + My Progress */}
             <div className="grid md:grid-cols-2 gap-6">
               <Link
@@ -269,6 +334,18 @@ export default function DashboardPage() {
                 </div>
                 <h2 className="text-lg font-semibold text-gray-900 mb-1">Settings</h2>
                 <p className="text-sm text-gray-600">Add a parent email to receive session note notifications.</p>
+              </Link>
+              <Link
+                href="/referrals"
+                className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 hover:border-purple-300 hover:shadow-md transition-all group"
+              >
+                <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-purple-200 transition-colors">
+                  <svg className="w-6 h-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                </div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-1">Refer a Friend</h2>
+                <p className="text-sm text-gray-600">Invite friends and earn free session credits.</p>
               </Link>
             </div>
           </div>

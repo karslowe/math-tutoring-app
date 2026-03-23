@@ -6,6 +6,7 @@ import {
   getSession,
   getSessionsByStudent,
   getUserProfile,
+  decrementFreeSessionCredit,
   TutoringSession,
 } from "@/lib/dynamodb";
 import {
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { scheduledAt, subject } = body;
+    const { scheduledAt, subject, useFreeCredit } = body;
 
     if (!scheduledAt) {
       return NextResponse.json(
@@ -51,14 +52,25 @@ export async function POST(request: NextRequest) {
       studentEmail: user.email,
       scheduledAt,
       duration: 60,
-      subject: subject || "KL Math",
+      subject: subject || "KL Math Prep",
       notes: "",
+      paidWithCredit: !!useFreeCredit,
       status: "scheduled",
       reminderSent: false,
       createdAt: new Date().toISOString(),
     };
 
     await bookSession(session);
+
+    // Decrement free session credit if used
+    if (useFreeCredit) {
+      try {
+        await decrementFreeSessionCredit(user.sub);
+      } catch (creditError) {
+        console.error("Failed to decrement credit:", creditError);
+        // Don't fail the booking if credit decrement fails
+      }
+    }
 
     // Send confirmation email (non-blocking)
     try {

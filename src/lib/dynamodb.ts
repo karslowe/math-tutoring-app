@@ -41,6 +41,7 @@ export interface TutoringSession {
   subject: string;
   notes: string;
   topics?: TopicMastery[];
+  paidWithCredit?: boolean;
   status: "scheduled" | "completed" | "cancelled";
   reminderSent: boolean;
   createdAt: string;
@@ -105,6 +106,8 @@ export interface UserProfile {
   displayName: string;
   role: "student" | "tutor";
   parentEmail?: string;
+  freeSessionCredits?: number;
+  referredBy?: string;
   createdAt: string;
 }
 
@@ -390,4 +393,142 @@ export async function getTopicProgressByStudent(
   }
 
   return summaries.sort((a, b) => a.topicName.localeCompare(b.topicName));
+}
+
+// ── Referral operations ──
+
+export type ReferralStatus = "pending" | "signed_up" | "credit_awarded";
+
+export interface Referral {
+  token: string;
+  referrerSub: string;
+  referrerEmail: string;
+  invitedEmail: string;
+  status: ReferralStatus;
+  createdAt: string;
+  expiresAt: string;
+  redeemedBySub?: string;
+  redeemedAt?: string;
+  creditAwardedAt?: string;
+}
+
+export async function createReferral(referral: Referral): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: awsConfig.dynamodb.referralsTable,
+      Item: referral,
+    })
+  );
+}
+
+export async function getReferral(token: string): Promise<Referral | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: awsConfig.dynamodb.referralsTable,
+      Key: { token },
+    })
+  );
+  return (result.Item as Referral) || null;
+}
+
+export async function getReferralsByReferrer(
+  referrerSub: string
+): Promise<Referral[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: awsConfig.dynamodb.referralsTable,
+      IndexName: "referrerSub-createdAt-index",
+      KeyConditionExpression: "referrerSub = :sub",
+      ExpressionAttributeValues: { ":sub": referrerSub },
+      ScanIndexForward: false,
+    })
+  );
+  return (result.Items || []) as Referral[];
+}
+
+export async function getReferralByInvitedEmail(
+  email: string
+): Promise<Referral | null> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: awsConfig.dynamodb.referralsTable,
+      IndexName: "invitedEmail-index",
+      KeyConditionExpression: "invitedEmail = :email",
+      ExpressionAttributeValues: { ":email": email.toLowerCase() },
+      ScanIndexForward: false,
+      Limit: 1,
+    })
+  );
+  const items = (result.Items || []) as Referral[];
+  return items.length > 0 ? items[0] : null;
+}
+
+export async function updateReferralRedeemed(
+  token: string,
+  redeemedBySub: string
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: awsConfig.dynamodb.referralsTable,
+      Key: { token },
+      UpdateExpression:
+        "SET #status = :status, redeemedBySub = :sub, redeemedAt = :now",
+      ExpressionAttributeNames: { "#status": "status" },
+      ExpressionAttributeValues: {
+        ":status": "signed_up",
+        ":sub": redeemedBySub,
+        ":now": new Date().toISOString(),
+      },
+      ConditionExpression: "#status = :pending",
+    })
+  );
+}
+
+export async function updateReferralCreditAwarded(
+  token: string
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: awsConfig.dynamodb.referralsTable,
+      Key: { token },
+      UpdateExpression:
+        "SET #status = :status, creditAwardedAt = :now",
+      ExpressionAttributeNames: { "#status": "status" },
+      ExpressionAttributeValues: {
+        ":status": "credit_awarded",
+        ":now": new Date().toISOString(),
+      },
+      ConditionExpression: "#status = :signedUp",
+    })
+  );
+}
+
+// ── Free session credit operations ──
+
+export async function incrementFreeSessionCredits(
+  sub: string,
+  amount: number = 1
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: awsConfig.dynamodb.usersTable,
+      Key: { sub },
+      UpdateExpression: "ADD freeSessionCredits :amount",
+      ExpressionAttributeValues: { ":amount": amount },
+    })
+  );
+}
+
+export async function decrementFreeSessionCredit(
+  sub: string
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: awsConfig.dynamodb.usersTable,
+      Key: { sub },
+      UpdateExpression: "SET freeSessionCredits = freeSessionCredits - :one",
+      ExpressionAttributeValues: { ":one": 1, ":zero": 0 },
+      ConditionExpression: "freeSessionCredits > :zero",
+    })
+  );
 }

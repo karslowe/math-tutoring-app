@@ -31,7 +31,7 @@ export function Navbar() {
             href="/"
             className="text-xl font-bold text-primary-700 tracking-tight"
           >
-            KL Math
+            KL Math Prep
           </Link>
 
           <div className="flex items-center gap-6">

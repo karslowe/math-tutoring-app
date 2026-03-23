@@ -64,6 +64,7 @@ export async function PUT(request: NextRequest) {
         displayName: user.email.split("@")[0],
         role: "student",
         parentEmail: parentEmail.trim(),
+        freeSessionCredits: 1,
         createdAt: new Date().toISOString(),
       });
     } else {
