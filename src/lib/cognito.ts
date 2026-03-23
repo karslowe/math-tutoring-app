@@ -26,6 +26,7 @@ function getUserPool(): CognitoUserPool {
 export interface AuthUser {
   username: string;
   email: string;
+  name: string;
   sub: string;
   groups: string[];
 }
@@ -49,6 +50,7 @@ export function getCurrentUser(): Promise<AuthUser | null> {
         resolve({
           username: cognitoUser.getUsername(),
           email: payload.email || "",
+          name: payload.name || "",
           sub: payload.sub || "",
           groups: payload["cognito:groups"] || [],
         });
@@ -77,6 +79,26 @@ export function getIdToken(): Promise<string | null> {
   });
 }
 
+export function getAccessToken(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const pool = getUserPool();
+    const cognitoUser = pool.getCurrentUser();
+    if (!cognitoUser) {
+      resolve(null);
+      return;
+    }
+    cognitoUser.getSession(
+      (err: Error | null, session: CognitoUserSession | null) => {
+        if (err || !session || !session.isValid()) {
+          resolve(null);
+          return;
+        }
+        resolve(session.getAccessToken().getJwtToken());
+      }
+    );
+  });
+}
+
 export function signIn(
   username: string,
   password: string
@@ -99,12 +121,14 @@ export function signIn(
 export function signUp(
   username: string,
   email: string,
-  password: string
+  password: string,
+  name: string
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const pool = getUserPool();
     const attributeList = [
       new CognitoUserAttribute({ Name: "email", Value: email }),
+      new CognitoUserAttribute({ Name: "name", Value: name }),
     ];
 
     pool.signUp(username, password, attributeList, [], (err) => {

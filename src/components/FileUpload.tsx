@@ -23,7 +23,7 @@ export function FileUpload({
   const [progress, setProgress] = useState<string>("");
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { getToken } = useAuth();
+  const { getToken, getIdToken } = useAuth();
 
   async function uploadFiles(files: FileList | File[]) {
     setError("");
@@ -55,8 +55,11 @@ export function FileUpload({
           Authorization: `Bearer ${token}`,
         };
 
-        if (useIdToken && token) {
-          headers["x-id-token"] = token;
+        if (useIdToken) {
+          const idToken = await getIdToken();
+          if (idToken) {
+            headers["x-id-token"] = idToken;
+          }
         }
 
         const response = await fetch(endpoint, {

@@ -31,7 +31,7 @@ export function Navbar() {
             href="/"
             className="text-xl font-bold text-primary-700 tracking-tight"
           >
-            Math Tutoring
+            KL Math Prep
           </Link>
 
           <div className="flex items-center gap-6">
@@ -43,18 +43,55 @@ export function Navbar() {
                 >
                   Dashboard
                 </Link>
-                <Link
-                  href="/my-files"
-                  className={`text-sm font-medium pb-0.5 ${isActive("/my-files")}`}
-                >
-                  My Files
-                </Link>
-                <Link
-                  href="/completed-notes"
-                  className={`text-sm font-medium pb-0.5 ${isActive("/completed-notes")}`}
-                >
-                  Completed Notes
-                </Link>
+                {user.groups?.includes("tutors") ? (
+                  <>
+                    <Link
+                      href="/tutor/files"
+                      className={`text-sm font-medium pb-0.5 ${isActive("/tutor/files")}`}
+                    >
+                      Student Files
+                    </Link>
+                    <Link
+                      href="/tutor/upload"
+                      className={`text-sm font-medium pb-0.5 ${isActive("/tutor/upload")}`}
+                    >
+                      Upload Notes
+                    </Link>
+                    <Link
+                      href="/tutor/session-notes"
+                      className={`text-sm font-medium pb-0.5 ${isActive("/tutor/session-notes")}`}
+                    >
+                      Session Notes
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      href="/my-files"
+                      className={`text-sm font-medium pb-0.5 ${isActive("/my-files")}`}
+                    >
+                      My Files
+                    </Link>
+                    <Link
+                      href="/completed-notes"
+                      className={`text-sm font-medium pb-0.5 ${isActive("/completed-notes")}`}
+                    >
+                      Completed Notes
+                    </Link>
+                    <Link
+                      href="/session-history"
+                      className={`text-sm font-medium pb-0.5 ${isActive("/session-history")}`}
+                    >
+                      Session History
+                    </Link>
+                    <Link
+                      href="/settings"
+                      className={`text-sm font-medium pb-0.5 ${isActive("/settings")}`}
+                    >
+                      Settings
+                    </Link>
+                  </>
+                )}
                 <span className="text-sm text-gray-500">
                   {user.email}
                 </span>

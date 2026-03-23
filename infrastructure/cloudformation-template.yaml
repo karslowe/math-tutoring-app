@@ -81,6 +81,8 @@ Resources:
           AttributeType: S
         - AttributeName: scheduledAt
           AttributeType: S
+        - AttributeName: status
+          AttributeType: S
       KeySchema:
         - AttributeName: id
           KeyType: HASH
@@ -88,6 +90,14 @@ Resources:
         - IndexName: studentSub-scheduledAt-index
           KeySchema:
             - AttributeName: studentSub
+              KeyType: HASH
+            - AttributeName: scheduledAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: status-scheduledAt-index
+          KeySchema:
+            - AttributeName: status
               KeyType: HASH
             - AttributeName: scheduledAt
               KeyType: RANGE
@@ -105,6 +115,23 @@ Resources:
       KeySchema:
         - AttributeName: sub
           KeyType: HASH
+
+  # ── Availability Table (tutor schedule) ──
+  AvailabilityTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: math-tutoring-availability
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
 
   # ── Lambda for Session Reminders ──
   ReminderLambdaRole:
@@ -146,7 +173,9 @@ Resources:
         Variables:
           SESSIONS_TABLE: !Ref SessionsTable
           FROM_EMAIL: !Ref TutorEmail
+          TUTOR_EMAIL: !Ref TutorEmail
           TUTOR_NAME: Math Tutor
+          TUTOR_TIMEZONE: America/Los_Angeles
       Code:
         ZipFile: |
           // Deploy the actual code from infrastructure/lambda/session-reminder/index.mjs
@@ -158,8 +187,8 @@ Resources:
     Type: AWS::Events::Rule
     Properties:
       Name: math-tutoring-reminder-schedule
-      Description: Trigger session reminder Lambda every 30 minutes
-      ScheduleExpression: 'rate(30 minutes)'
+      Description: Trigger session reminder Lambda every 15 minutes
+      ScheduleExpression: 'rate(15 minutes)'
       State: ENABLED
       Targets:
         - Arn: !GetAtt ReminderLambda.Arn
@@ -189,3 +218,6 @@ Outputs:
   UsersTableName:
     Value: !Ref UsersTable
     Description: DynamoDB users table name
+  AvailabilityTableName:
+    Value: !Ref AvailabilityTable
+    Description: DynamoDB availability table name
