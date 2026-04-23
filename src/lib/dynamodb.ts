@@ -111,6 +111,9 @@ export interface UserProfile {
   parentEmail?: string;
   freeSessionCredits?: number;
   referredBy?: string;
+  surveyCompleted?: boolean;
+  surveySubject?: string;
+  surveyGoal?: string;
   createdAt: string;
 }
 
@@ -147,6 +150,26 @@ export async function updateParentEmail(
       Key: { sub },
       UpdateExpression: "SET parentEmail = :parentEmail",
       ExpressionAttributeValues: { ":parentEmail": parentEmail },
+    })
+  );
+}
+
+export async function updateSurvey(
+  sub: string,
+  surveySubject: string,
+  surveyGoal: string
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: awsConfig.dynamodb.usersTable,
+      Key: { sub },
+      UpdateExpression:
+        "SET surveySubject = :subject, surveyGoal = :goal, surveyCompleted = :true",
+      ExpressionAttributeValues: {
+        ":subject": surveySubject,
+        ":goal": surveyGoal,
+        ":true": true,
+      },
     })
   );
 }

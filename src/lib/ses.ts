@@ -264,6 +264,61 @@ export async function sendReferralInviteEmail({
 }
 
 /**
+ * Notify the tutor that a new student completed the onboarding survey.
+ */
+export async function sendSurveyCompletedEmail({
+  studentName,
+  studentEmail,
+  subject,
+  goal,
+}: {
+  studentName: string;
+  studentEmail: string;
+  subject: string;
+  goal: string;
+}): Promise<void> {
+  const fromEmail = awsConfig.ses.fromEmail;
+  const tutorEmail = awsConfig.tutorEmail;
+  if (!fromEmail || !tutorEmail) {
+    console.warn("SES_FROM_EMAIL or TUTOR_EMAIL not configured, skipping survey email");
+    return;
+  }
+
+  const htmlBody = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #2563eb; padding: 24px; border-radius: 12px 12px 0 0;">
+        <h1 style="color: white; margin: 0; font-size: 20px;">New Student Onboarded</h1>
+      </div>
+      <div style="background: #ffffff; padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+        <p style="color: #6b7280; margin: 0 0 20px;">A new student just completed the onboarding survey:</p>
+        <div style="background: #f9fafb; border-left: 4px solid #2563eb; padding: 16px; border-radius: 0 8px 8px 0;">
+          <p style="color: #374151; margin: 0 0 8px;"><strong>Name:</strong> ${studentName}</p>
+          <p style="color: #374151; margin: 0 0 8px;"><strong>Email:</strong> ${studentEmail}</p>
+          <p style="color: #374151; margin: 0 0 8px;"><strong>Subject Focus:</strong> ${subject}</p>
+          <p style="color: #374151; margin: 0;"><strong>Goal:</strong> ${goal}</p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const textBody = `New Student Onboarded\n\nA new student just completed the onboarding survey:\n\nName: ${studentName}\nEmail: ${studentEmail}\nSubject Focus: ${subject}\nGoal: ${goal}`;
+
+  await sesClient.send(
+    new SendEmailCommand({
+      Source: fromEmail,
+      Destination: { ToAddresses: [tutorEmail] },
+      Message: {
+        Subject: { Data: `New student survey: ${studentName} - ${subject}`, Charset: "UTF-8" },
+        Body: {
+          Html: { Data: htmlBody, Charset: "UTF-8" },
+          Text: { Data: textBody, Charset: "UTF-8" },
+        },
+      },
+    })
+  );
+}
+
+/**
  * Send a notification to the referrer that they earned a free session credit.
  */
 export async function sendReferralCreditEmail({
