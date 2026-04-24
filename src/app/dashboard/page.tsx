@@ -84,7 +84,7 @@ export default function DashboardPage() {
       });
 
       if (res.ok) {
-        setReferralMessage("Welcome! You received a free session credit from your referral!");
+        setReferralMessage("Welcome! You were referred by a friend — enjoy your first session!");
         fetchCredits();
       }
     } catch {

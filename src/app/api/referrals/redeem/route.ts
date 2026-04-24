@@ -3,7 +3,6 @@ import { extractToken, verifyToken } from "@/lib/auth-helpers";
 import {
   getReferral,
   updateReferralRedeemed,
-  incrementFreeSessionCredits,
   getUserProfile,
   upsertUserProfile,
 } from "@/lib/dynamodb";
@@ -73,10 +72,10 @@ export async function POST(request: NextRequest) {
     // Mark referral as redeemed
     await updateReferralRedeemed(token, user.sub);
 
-    // Ensure user profile exists and give them a free credit
-    let profile = await getUserProfile(user.sub);
+    // Ensure user profile exists and record referredBy
+    const profile = await getUserProfile(user.sub);
     if (!profile) {
-      profile = {
+      await upsertUserProfile({
         sub: user.sub,
         email: user.email,
         displayName: user.email.split("@")[0],
@@ -84,16 +83,12 @@ export async function POST(request: NextRequest) {
         freeSessionCredits: 1,
         referredBy: referral.referrerSub,
         createdAt: new Date().toISOString(),
-      };
-      await upsertUserProfile(profile);
+      });
     }
-
-    // Give the new student 1 free session credit
-    await incrementFreeSessionCredits(user.sub, 1);
 
     return NextResponse.json({
       success: true,
-      message: "Referral redeemed! You have a free session credit.",
+      message: "Welcome! Your referral has been recorded.",
     });
   } catch (error: any) {
     console.error("Redeem referral error:", error);
