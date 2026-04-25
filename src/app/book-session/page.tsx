@@ -7,7 +7,7 @@ import CalendarGrid from "@/components/CalendarGrid";
 import TimeSlotPicker from "@/components/TimeSlotPicker";
 import BookingModal from "@/components/BookingModal";
 import Link from "next/link";
-import { format, parseISO, startOfMonth, endOfMonth, addMonths } from "date-fns";
+import { format, parseISO, addDays } from "date-fns";
 
 interface DaySlots {
   date: string;
@@ -45,7 +45,7 @@ export default function BookSessionPage() {
     try {
       const now = new Date();
       const start = format(now, "yyyy-MM-dd");
-      const end = format(endOfMonth(addMonths(now, 2)), "yyyy-MM-dd");
+      const end = format(addDays(now, 14), "yyyy-MM-dd");
 
       const res = await fetch(
         `/api/slots?startDate=${start}&endDate=${end}`,

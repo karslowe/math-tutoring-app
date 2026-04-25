@@ -46,6 +46,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Students may only book up to 14 days in advance
+    const fourteenDaysOut = new Date();
+    fourteenDaysOut.setDate(fourteenDaysOut.getDate() + 14);
+    if (new Date(scheduledAt) > fourteenDaysOut) {
+      return NextResponse.json(
+        { error: "You can only book sessions up to 2 weeks in advance" },
+        { status: 400 }
+      );
+    }
+
     const session: TutoringSession = {
       id: randomUUID(),
       studentSub: user.sub,

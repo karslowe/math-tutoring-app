@@ -191,8 +191,7 @@ export interface WeeklyAvailability {
 export interface DateOverride {
   pk: string; // OVERRIDE#YYYY-MM-DD
   sk: string; // YYYY-MM-DD
-  available: boolean;
-  slots: AvailabilitySlot[];
+  blockedRanges: AvailabilitySlot[];
   updatedAt: string;
 }
 
@@ -226,8 +225,7 @@ export async function getWeeklyAvailability(): Promise<WeeklyAvailability[]> {
 
 export async function setDateOverride(
   date: string,
-  available: boolean,
-  slots: AvailabilitySlot[]
+  blockedRanges: AvailabilitySlot[]
 ): Promise<void> {
   await docClient.send(
     new PutCommand({
@@ -235,8 +233,7 @@ export async function setDateOverride(
       Item: {
         pk: `OVERRIDE#${date}`,
         sk: date,
-        available,
-        slots,
+        blockedRanges,
         updatedAt: new Date().toISOString(),
       },
     })

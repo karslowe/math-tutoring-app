@@ -30,14 +30,22 @@ export async function GET(request: NextRequest) {
   }
 
   const startDate = request.nextUrl.searchParams.get("startDate");
-  const endDate = request.nextUrl.searchParams.get("endDate");
+  const requestedEnd = request.nextUrl.searchParams.get("endDate");
 
-  if (!startDate || !endDate) {
+  if (!startDate || !requestedEnd) {
     return NextResponse.json(
       { error: "startDate and endDate are required" },
       { status: 400 }
     );
   }
+
+  // Clamp end date to 14 days from today (inclusive) — students may only book 2 weeks ahead.
+  const maxEnd = formatInTimeZone(
+    addDays(new Date(), 14),
+    TUTOR_TIMEZONE,
+    "yyyy-MM-dd"
+  );
+  const endDate = requestedEnd < maxEnd ? requestedEnd : maxEnd;
 
   try {
     // Fetch all data in parallel

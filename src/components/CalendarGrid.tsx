@@ -14,6 +14,8 @@ import {
   addMonths,
   subMonths,
   isBefore,
+  isAfter,
+  addDays,
   startOfDay,
 } from "date-fns";
 
@@ -37,6 +39,7 @@ export default function CalendarGrid({
 
   const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
   const today = startOfDay(new Date());
+  const bookingCutoff = addDays(today, 14);
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
@@ -102,26 +105,29 @@ export default function CalendarGrid({
           const isCurrentMonth = isSameMonth(day, currentMonth);
           const isSelected = selectedDate && isSameDay(day, selectedDate);
           const isPast = isBefore(day, today);
+          const isTooFar = isAfter(day, bookingCutoff);
+          const isDisabled = isPast || isTooFar || !isCurrentMonth;
           const hasSlots = markedDates.has(dateStr);
           const isDayToday = isToday(day);
 
           return (
             <button
               key={dateStr}
-              onClick={() => !isPast && isCurrentMonth && onDateSelect(day)}
-              disabled={isPast || !isCurrentMonth}
+              onClick={() => !isDisabled && onDateSelect(day)}
+              disabled={isDisabled}
               className={`
                 relative p-2 text-sm rounded-lg transition-all text-center
                 ${!isCurrentMonth ? "text-gray-300 cursor-default" : ""}
                 ${isPast && isCurrentMonth ? "text-gray-400 cursor-not-allowed" : ""}
-                ${!isPast && isCurrentMonth && !isSelected ? "hover:bg-blue-50 cursor-pointer" : ""}
+                ${isTooFar && isCurrentMonth ? "text-gray-300 cursor-not-allowed" : ""}
+                ${!isDisabled && !isSelected ? "hover:bg-blue-50 cursor-pointer" : ""}
                 ${isSelected ? "bg-blue-600 text-white font-semibold" : ""}
                 ${isDayToday && !isSelected ? "font-bold text-blue-600" : ""}
-                ${!isPast && isCurrentMonth && !isSelected ? "text-gray-900" : ""}
+                ${!isDisabled && !isSelected ? "text-gray-900" : ""}
               `}
             >
               {format(day, "d")}
-              {hasSlots && !isSelected && isCurrentMonth && !isPast && (
+              {hasSlots && !isSelected && !isDisabled && (
                 <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-green-500 rounded-full" />
               )}
             </button>

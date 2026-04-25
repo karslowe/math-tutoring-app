@@ -202,6 +202,75 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt ReminderScheduleRule.Arn
 
+  # ── Lambda for Weekly Block Reset ──
+  WeeklyBlockResetRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: WeeklyBlockResetPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:Scan
+                  - dynamodb:DeleteItem
+                Resource: !GetAtt AvailabilityTable.Arn
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                Resource: '*'
+
+  WeeklyBlockResetLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: math-tutoring-weekly-block-reset
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt WeeklyBlockResetRole.Arn
+      Timeout: 60
+      Environment:
+        Variables:
+          AVAILABILITY_TABLE: !Ref AvailabilityTable
+          FROM_EMAIL: !Ref TutorEmail
+          TUTOR_EMAIL: !Ref TutorEmail
+          TUTOR_TIMEZONE: America/Los_Angeles
+      Code:
+        ZipFile: |
+          // Deploy the actual code from infrastructure/lambda/weekly-block-reset/index.mjs
+          // This is a placeholder - use AWS CLI or CI/CD to deploy the real code
+          export async function handler() { return { statusCode: 200 }; }
+
+  # EventBridge: Thursday 6am America/Los_Angeles = 13:00 UTC (PST) / 14:00 UTC (PDT).
+  # Using 13:00 UTC means reset fires at 5am PT during DST and 6am PT during standard time.
+  WeeklyBlockResetRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: math-tutoring-weekly-block-reset
+      Description: Clear tutor blocks every Thursday so they re-set for the upcoming week
+      ScheduleExpression: 'cron(0 13 ? * THU *)'
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt WeeklyBlockResetLambda.Arn
+          Id: WeeklyBlockResetTarget
+
+  WeeklyBlockResetPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WeeklyBlockResetLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt WeeklyBlockResetRule.Arn
+
 Outputs:
   UserPoolId:
     Value: !Ref UserPool

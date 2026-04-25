@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import AvailabilityEditor from "@/components/AvailabilityEditor";
+import WeeklyBlocksEditor from "@/components/WeeklyBlocksEditor";
 import Link from "next/link";
 import {
   format,
@@ -24,30 +25,17 @@ interface BookedSession {
   paidWithCredit?: boolean;
 }
 
-interface DateOverrideItem {
-  sk: string; // YYYY-MM-DD
-  available: boolean;
-}
-
 export default function TutorSchedulePage() {
   const { getToken, getIdToken } = useAuth();
   const [activeTab, setActiveTab] = useState<
-    "availability" | "sessions" | "overrides"
+    "availability" | "blocks" | "sessions"
   >("availability");
   const [sessions, setSessions] = useState<BookedSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
 
-  // Override state
-  const [overrideDate, setOverrideDate] = useState("");
-  const [overrides, setOverrides] = useState<DateOverrideItem[]>([]);
-  const [loadingOverrides, setLoadingOverrides] = useState(false);
-  const [savingOverride, setSavingOverride] = useState(false);
-  const [overrideMessage, setOverrideMessage] = useState("");
-
   const weekEnd = endOfWeek(weekStart);
 
-  // Load sessions when tab is active or week changes
   useEffect(() => {
     if (activeTab !== "sessions") return;
 
@@ -82,101 +70,6 @@ export default function TutorSchedulePage() {
     loadSessions();
   }, [activeTab, weekStart, getToken, getIdToken]);
 
-  // Load overrides when tab is active
-  useEffect(() => {
-    if (activeTab !== "overrides") return;
-
-    async function loadOverrides() {
-      const token = await getToken();
-      if (!token) return;
-
-      setLoadingOverrides(true);
-      try {
-        const res = await fetch(
-          `/api/availability/overrides?startDate=2020-01-01&endDate=2030-12-31`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        const data = await res.json();
-        setOverrides(data.overrides || []);
-      } catch (error) {
-        console.error("Failed to load overrides:", error);
-      } finally {
-        setLoadingOverrides(false);
-      }
-    }
-
-    loadOverrides();
-  }, [activeTab, getToken]);
-
-  async function refreshOverrides() {
-    const token = await getToken();
-    if (!token) return;
-
-    try {
-      const res = await fetch(
-        `/api/availability/overrides?startDate=2020-01-01&endDate=2030-12-31`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const data = await res.json();
-      setOverrides(data.overrides || []);
-    } catch (error) {
-      console.error("Failed to refresh overrides:", error);
-    }
-  }
-
-  async function handleBlockDate() {
-    if (!overrideDate) return;
-    setSavingOverride(true);
-    setOverrideMessage("");
-
-    try {
-      const token = await getToken();
-      const idToken = await getIdToken();
-
-      const res = await fetch("/api/availability/overrides", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          ...(idToken ? { "x-id-token": idToken } : {}),
-        },
-        body: JSON.stringify({
-          date: overrideDate,
-          available: false,
-          slots: [],
-        }),
-      });
-
-      if (!res.ok) throw new Error("Failed to save override");
-      setOverrideMessage(`Blocked ${overrideDate}`);
-      setOverrideDate("");
-      await refreshOverrides();
-    } catch (error) {
-      setOverrideMessage("Failed to block date");
-    } finally {
-      setSavingOverride(false);
-      setTimeout(() => setOverrideMessage(""), 3000);
-    }
-  }
-
-  async function handleRemoveOverride(date: string) {
-    try {
-      const token = await getToken();
-      const idToken = await getIdToken();
-
-      await fetch(`/api/availability/overrides?date=${date}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          ...(idToken ? { "x-id-token": idToken } : {}),
-        },
-      });
-      await refreshOverrides();
-    } catch (error) {
-      console.error("Failed to remove override:", error);
-    }
-  }
-
   return (
     <ProtectedRoute>
       <div className="max-w-4xl mx-auto px-4 py-8">
@@ -193,11 +86,10 @@ export default function TutorSchedulePage() {
           Schedule Management
         </h1>
 
-        {/* Tabs */}
         <div className="flex gap-2 mb-6">
           {[
-            { id: "availability" as const, label: "Set Availability" },
-            { id: "overrides" as const, label: "Block Off Dates" },
+            { id: "availability" as const, label: "Set Base Hours" },
+            { id: "blocks" as const, label: "Block Off Next 2 Weeks" },
             { id: "sessions" as const, label: "Upcoming Sessions" },
           ].map((tab) => (
             <button
@@ -214,93 +106,24 @@ export default function TutorSchedulePage() {
           ))}
         </div>
 
-        {/* Availability tab — use display:none to keep state alive */}
         <div style={{ display: activeTab === "availability" ? "block" : "none" }}>
           <p className="text-sm text-gray-600 mb-4">
-            Set your weekly availability. Add time windows for each day you want
-            to offer tutoring sessions.
+            Set your weekly base hours. These recur every week unless you block
+            time off for a specific day.
           </p>
           <AvailabilityEditor getToken={getToken} getIdToken={getIdToken} />
         </div>
 
-        {/* Overrides tab */}
-        {activeTab === "overrides" && (
+        {activeTab === "blocks" && (
           <div>
             <p className="text-sm text-gray-600 mb-4">
-              Block off specific dates when you are unavailable, regardless of
-              your weekly schedule.
+              Block off specific time ranges for the upcoming 14 days. Blocks
+              subtract from your base hours.
             </p>
-
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
-              <div className="flex items-center gap-3">
-                <input
-                  type="date"
-                  value={overrideDate}
-                  onChange={(e) => setOverrideDate(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  onClick={handleBlockDate}
-                  disabled={!overrideDate || savingOverride}
-                  className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
-                >
-                  {savingOverride ? "Blocking..." : "Block This Date"}
-                </button>
-              </div>
-              {overrideMessage && (
-                <p className="text-sm text-gray-600 mt-2">{overrideMessage}</p>
-              )}
-            </div>
-
-            {/* List of blocked dates */}
-            {loadingOverrides ? (
-              <div className="space-y-3">
-                {[...Array(2)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="animate-pulse bg-gray-100 rounded-xl h-14"
-                  />
-                ))}
-              </div>
-            ) : overrides.length === 0 ? (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center">
-                <p className="text-gray-500 text-sm">No blocked dates.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {overrides
-                  .sort((a, b) => a.sk.localeCompare(b.sk))
-                  .map((override) => (
-                    <div
-                      key={override.sk}
-                      className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="w-2 h-2 bg-red-500 rounded-full" />
-                        <span className="text-sm font-medium text-gray-900">
-                          {format(
-                            parseISO(override.sk),
-                            "EEEE, MMMM d, yyyy"
-                          )}
-                        </span>
-                        <span className="text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-                          Blocked
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => handleRemoveOverride(override.sk)}
-                        className="text-sm text-gray-500 hover:text-red-600 font-medium"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-              </div>
-            )}
+            <WeeklyBlocksEditor getToken={getToken} getIdToken={getIdToken} />
           </div>
         )}
 
-        {/* Sessions tab */}
         {activeTab === "sessions" && (
           <div>
             <div className="flex items-center justify-between mb-4">

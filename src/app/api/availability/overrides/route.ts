@@ -86,16 +86,16 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { date, available, slots } = body;
+    const { date, blockedRanges } = body;
 
-    if (!date || typeof available !== "boolean") {
+    if (!date || !Array.isArray(blockedRanges)) {
       return NextResponse.json(
-        { error: "date and available are required" },
+        { error: "date and blockedRanges are required" },
         { status: 400 }
       );
     }
 
-    await setDateOverride(date, available, slots || []);
+    await setDateOverride(date, blockedRanges);
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("Set override error:", error);
