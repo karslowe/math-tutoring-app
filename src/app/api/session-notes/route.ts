@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken } from "@/lib/auth-helpers";
+import { extractToken, verifyToken, getHouseholdSub } from "@/lib/auth-helpers";
 import { getSessionsByStudent } from "@/lib/dynamodb";
 
 // GET - Student views their own session history
@@ -15,7 +15,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const sessions = await getSessionsByStudent(user.sub);
+    const householdSub = await getHouseholdSub(user.sub);
+    const sessions = await getSessionsByStudent(householdSub);
     return NextResponse.json({ sessions });
   } catch (error: any) {
     console.error("Get session history error:", error);

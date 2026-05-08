@@ -6,8 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 function ConfirmForm() {
   const searchParams = useSearchParams();
-  const [username, setUsername] = useState(
-    searchParams.get("username") || ""
+  const [email, setEmail] = useState(
+    searchParams.get("email") || searchParams.get("username") || ""
   );
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
@@ -21,7 +21,7 @@ function ConfirmForm() {
     setLoading(true);
 
     try {
-      await confirmSignUp(username, code);
+      await confirmSignUp(email.trim().toLowerCase(), code);
       router.push("/auth/signin");
     } catch (err: any) {
       setError(err.message || "Failed to confirm");
@@ -50,13 +50,14 @@ function ConfirmForm() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Username
+                Email
               </label>
               <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                autoComplete="email"
                 required
               />
             </div>

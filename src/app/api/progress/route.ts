@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken } from "@/lib/auth-helpers";
+import { extractToken, verifyToken, getHouseholdSub } from "@/lib/auth-helpers";
 import { getTopicProgressByStudent } from "@/lib/dynamodb";
 
 // GET - Student views their own topic progress
@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const progress = await getTopicProgressByStudent(user.sub);
+    const householdSub = await getHouseholdSub(user.sub);
+    const progress = await getTopicProgressByStudent(householdSub);
     return NextResponse.json({ progress });
   } catch (error: any) {
     console.error("Get progress error:", error);

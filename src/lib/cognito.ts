@@ -119,7 +119,6 @@ export function signIn(
 }
 
 export function signUp(
-  username: string,
   email: string,
   password: string,
   name: string
@@ -131,7 +130,7 @@ export function signUp(
       new CognitoUserAttribute({ Name: "name", Value: name }),
     ];
 
-    pool.signUp(username, password, attributeList, [], (err) => {
+    pool.signUp(email, password, attributeList, [], (err) => {
       if (err) {
         reject(err);
         return;

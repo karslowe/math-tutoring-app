@@ -3,6 +3,7 @@ import {
   GetUserCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { awsConfig } from "./aws-config";
+import { getUserProfile } from "./dynamodb";
 
 const cognitoClient = new CognitoIdentityProviderClient({
   region: awsConfig.region,
@@ -60,4 +61,15 @@ export function extractToken(authHeader: string | null): string | null {
  */
 export function isTutor(groups: string[]): boolean {
   return groups.includes("tutors");
+}
+
+/**
+ * Resolve a user to their household's primary sub. If the user is a child
+ * linked via a family invite, returns the parent's sub so portal data
+ * (bookings, files, sessions, credits, progress) is shared with the parent.
+ * Otherwise returns the user's own sub.
+ */
+export async function getHouseholdSub(userSub: string): Promise<string> {
+  const profile = await getUserProfile(userSub);
+  return profile?.parentSub || userSub;
 }

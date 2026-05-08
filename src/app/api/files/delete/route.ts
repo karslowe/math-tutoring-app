@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken } from "@/lib/auth-helpers";
+import { extractToken, verifyToken, getHouseholdSub } from "@/lib/auth-helpers";
 import { deleteFile, getStudentUploadPrefix } from "@/lib/s3";
 
 export async function DELETE(request: NextRequest) {
@@ -20,8 +20,9 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "No file key provided" }, { status: 400 });
     }
 
-    // Ensure the user can only delete their own files
-    const prefix = getStudentUploadPrefix(user.sub);
+    // Ensure the user can only delete files under their household prefix
+    const householdSub = await getHouseholdSub(user.sub);
+    const prefix = getStudentUploadPrefix(householdSub);
     if (!key.startsWith(prefix)) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }

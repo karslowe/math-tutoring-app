@@ -85,6 +85,12 @@ export function Navbar() {
                       Session History
                     </Link>
                     <Link
+                      href="/family"
+                      className={`text-sm font-medium pb-0.5 ${isActive("/family")}`}
+                    >
+                      Connect Student
+                    </Link>
+                    <Link
                       href="/settings"
                       className={`text-sm font-medium pb-0.5 ${isActive("/settings")}`}
                     >

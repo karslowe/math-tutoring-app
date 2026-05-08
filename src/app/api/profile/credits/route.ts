@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken } from "@/lib/auth-helpers";
-import { getUserProfile, upsertUserProfile } from "@/lib/dynamodb";
+import { extractToken, verifyToken, getHouseholdSub } from "@/lib/auth-helpers";
+import { getUserProfile, ensureUserProfile } from "@/lib/dynamodb";
 
 // GET - Get current free session credits (creates profile with 1 free credit if new)
 export async function GET(request: NextRequest) {
@@ -15,10 +15,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    let profile = await getUserProfile(user.sub);
+    const householdSub = await getHouseholdSub(user.sub);
+    let profile = await getUserProfile(householdSub);
 
-    // Auto-create profile with 1 free credit for new students
-    if (!profile) {
+    // Auto-create profile with 1 free credit only for unlinked new users.
+    // Linked students share the parent's credit pool, so don't issue another.
+    if (!profile && householdSub === user.sub) {
       profile = {
         sub: user.sub,
         email: user.email,
@@ -27,11 +29,14 @@ export async function GET(request: NextRequest) {
         freeSessionCredits: 1,
         createdAt: new Date().toISOString(),
       };
-      await upsertUserProfile(profile);
+      // Conditional put — if another request (like family-invite redeem)
+      // created the profile concurrently, don't clobber it. Re-fetch instead.
+      await ensureUserProfile(profile);
+      profile = (await getUserProfile(user.sub)) || profile;
     }
 
     return NextResponse.json({
-      credits: profile.freeSessionCredits || 0,
+      credits: profile?.freeSessionCredits || 0,
     });
   } catch (error: any) {
     console.error("Get credits error:", error);

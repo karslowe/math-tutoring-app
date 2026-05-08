@@ -264,6 +264,62 @@ export async function sendReferralInviteEmail({
 }
 
 /**
+ * Send a family-invite email so a parent can connect a separate student account
+ * to their own. The student clicks the link to sign up (or, if logged in, to
+ * accept the link).
+ */
+export async function sendFamilyInviteEmail({
+  to,
+  parentName,
+  parentEmail,
+  signupUrl,
+}: {
+  to: string;
+  parentName: string;
+  parentEmail: string;
+  signupUrl: string;
+}): Promise<void> {
+  const fromEmail = awsConfig.ses.fromEmail;
+  if (!fromEmail) return;
+  if (!to || !to.includes("@")) return;
+
+  const greeting = parentName ? parentName : parentEmail;
+
+  const htmlBody = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #2563eb; padding: 24px; border-radius: 12px 12px 0 0;">
+        <h1 style="color: white; margin: 0; font-size: 20px;">Connect Your Student Account</h1>
+      </div>
+      <div style="background: #ffffff; padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+        <p style="color: #374151; margin: 0 0 8px;">Hi there,</p>
+        <p style="color: #6b7280; margin: 0 0 20px;">${greeting} (${parentEmail}) invited you to create a student account on KL Math Prep that will be linked to theirs. You'll get your own login, and they'll stay connected to your sessions and notes.</p>
+        <a href="${signupUrl}" style="display: inline-block; background: #2563eb; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 15px; margin: 0 0 20px;">Create Your Account</a>
+        <p style="color: #9ca3af; font-size: 13px; margin: 16px 0 0;">If you already have an account, sign in and open the same link to link the accounts. This invite expires in 14 days.</p>
+      </div>
+    </div>
+  `;
+
+  const textBody = `Connect Your Student Account\n\n${greeting} (${parentEmail}) invited you to create a student account on KL Math Prep linked to theirs.\n\n${signupUrl}\n\nIf you already have an account, sign in and open the same link to link the accounts. This invite expires in 14 days.`;
+
+  await sesClient.send(
+    new SendEmailCommand({
+      Source: fromEmail,
+      Destination: { ToAddresses: [to] },
+      Message: {
+        Subject: {
+          Data: `${greeting} invited you to KL Math Prep`,
+          Charset: "UTF-8",
+        },
+        Body: {
+          Html: { Data: htmlBody, Charset: "UTF-8" },
+          Text: { Data: textBody, Charset: "UTF-8" },
+        },
+      },
+    })
+  );
+}
+
+/**
  * Notify the tutor that a new student completed the onboarding survey.
  */
 export async function sendSurveyCompletedEmail({

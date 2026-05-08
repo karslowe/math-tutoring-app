@@ -7,7 +7,7 @@ import Link from "next/link";
 
 export default function ForgotPasswordPage() {
   const [step, setStep] = useState<"request" | "confirm">("request");
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [error, setError] = useState("");
@@ -20,7 +20,7 @@ export default function ForgotPasswordPage() {
     setError("");
     setLoading(true);
     try {
-      await forgotPassword(username);
+      await forgotPassword(email.trim().toLowerCase());
       setStep("confirm");
     } catch (err: any) {
       setError(err.message || "Failed to send reset code");
@@ -34,7 +34,7 @@ export default function ForgotPasswordPage() {
     setError("");
     setLoading(true);
     try {
-      await confirmNewPassword(username, code, newPassword);
+      await confirmNewPassword(email.trim().toLowerCase(), code, newPassword);
       router.push("/auth/signin");
     } catch (err: any) {
       setError(err.message || "Failed to reset password");
@@ -61,13 +61,14 @@ export default function ForgotPasswordPage() {
             <form onSubmit={handleRequestCode} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Username
+                  Email
                 </label>
                 <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                  autoComplete="email"
                   required
                 />
               </div>

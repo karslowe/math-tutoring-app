@@ -16,6 +16,9 @@ export const awsConfig = {
     usersTable: process.env.DYNAMODB_TABLE_USERS || "math-tutoring-users",
     availabilityTable: process.env.DYNAMODB_TABLE_AVAILABILITY || "math-tutoring-availability",
     referralsTable: process.env.DYNAMODB_TABLE_REFERRALS || "math-tutoring-referrals",
+    familyInvitationsTable:
+      process.env.DYNAMODB_TABLE_FAMILY_INVITATIONS ||
+      "math-tutoring-family-invitations",
   },
   ses: {
     fromEmail: process.env.SES_FROM_EMAIL || "",

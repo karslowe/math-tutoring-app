@@ -5,15 +5,26 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
+function normalizePhone(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith("+")) {
+    return "+" + trimmed.slice(1).replace(/\D/g, "");
+  }
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  return `+${digits}`;
+}
+
 function SignUpForm() {
   const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { signUp } = useAuth();
+  const { signUp, user, getToken } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -23,27 +34,72 @@ function SignUpForm() {
   const [referrerEmail, setReferrerEmail] = useState("");
   const [invitedEmail, setInvitedEmail] = useState("");
 
-  // Check for referral token in URL
+  // Family invite state
+  const [familyToken, setFamilyToken] = useState("");
+  const [familyValid, setFamilyValid] = useState(false);
+  const [parentEmail, setParentEmail] = useState("");
+
   useEffect(() => {
-    const token = searchParams.get("referralToken");
-    if (token) {
-      setReferralToken(token);
-      // Validate the token
-      fetch(`/api/referrals/validate?token=${token}`)
+    const refToken = searchParams.get("referralToken");
+    if (refToken) {
+      setReferralToken(refToken);
+      fetch(`/api/referrals/validate?token=${refToken}`)
         .then((res) => res.json())
         .then((data) => {
           if (data.valid) {
             setReferralValid(true);
             setReferrerEmail(data.referrerEmail || "");
             setInvitedEmail(data.invitedEmail || "");
-            if (data.invitedEmail) {
-              setEmail(data.invitedEmail);
-            }
+            if (data.invitedEmail) setEmail(data.invitedEmail);
+          }
+        })
+        .catch(() => {});
+    }
+
+    const famToken = searchParams.get("familyToken");
+    if (famToken) {
+      setFamilyToken(famToken);
+      fetch(`/api/family/invitations/validate?token=${famToken}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.valid) {
+            setFamilyValid(true);
+            setParentEmail(data.parentEmail || "");
+            if (data.invitedStudentEmail) setEmail(data.invitedStudentEmail);
           }
         })
         .catch(() => {});
     }
   }, [searchParams]);
+
+  // If a logged-in user lands here with a family invite token, redeem it
+  // directly instead of trying to sign up again.
+  useEffect(() => {
+    const famToken = searchParams.get("familyToken");
+    if (!famToken || !user) return;
+    (async () => {
+      try {
+        const tok = await getToken();
+        const res = await fetch("/api/family/invitations/redeem", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${tok}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ token: famToken }),
+        });
+        if (res.ok) {
+          sessionStorage.removeItem("familyInviteToken");
+          router.push("/dashboard");
+        } else {
+          const data = await res.json().catch(() => ({}));
+          setError(data.error || "Could not redeem this invitation.");
+        }
+      } catch {
+        setError("Could not redeem this invitation.");
+      }
+    })();
+  }, [searchParams, user, getToken, router]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -54,22 +110,37 @@ function SignUpForm() {
       return;
     }
 
-    // If referral exists, verify email matches
     if (referralToken && invitedEmail && email.toLowerCase() !== invitedEmail.toLowerCase()) {
       setError("Please sign up with the email the referral was sent to: " + invitedEmail);
       return;
     }
 
+    let normalizedPhone = "";
+    if (phone.trim()) {
+      normalizedPhone = normalizePhone(phone);
+      if (!/^\+\d{8,15}$/.test(normalizedPhone)) {
+        setError(
+          "Phone number must be in international format (e.g. +14155550123)."
+        );
+        return;
+      }
+    }
+
     setLoading(true);
     try {
-      await signUp(username, email, password, name);
+      await signUp(email, password, name);
 
-      // Store referral token for redemption after login
       if (referralToken && referralValid) {
         sessionStorage.setItem("referralToken", referralToken);
       }
+      if (familyToken && familyValid) {
+        sessionStorage.setItem("familyInviteToken", familyToken);
+      }
+      if (normalizedPhone) {
+        sessionStorage.setItem("pendingPhone", normalizedPhone);
+      }
 
-      router.push(`/auth/confirm?username=${encodeURIComponent(username)}`);
+      router.push(`/auth/confirm?email=${encodeURIComponent(email)}`);
     } catch (err: any) {
       setError(err.message || "Failed to sign up");
     } finally {
@@ -85,7 +156,6 @@ function SignUpForm() {
             Create Account
           </h1>
 
-          {/* Referral Banner */}
           {referralValid && (
             <div className="bg-purple-50 border border-purple-200 rounded-lg px-4 py-3 mb-4">
               <p className="text-sm text-purple-800 font-medium">
@@ -93,6 +163,17 @@ function SignUpForm() {
               </p>
               <p className="text-xs text-purple-600 mt-1">
                 Sign up to get a free session credit.
+              </p>
+            </div>
+          )}
+
+          {familyValid && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4">
+              <p className="text-sm text-blue-800 font-medium">
+                Your account will be linked to {parentEmail}
+              </p>
+              <p className="text-xs text-blue-600 mt-1">
+                You&apos;ll have your own login; your parent will stay connected to your sessions.
               </p>
             </div>
           )}
@@ -120,19 +201,6 @@ function SignUpForm() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Username
-              </label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Email
               </label>
               <input
@@ -140,16 +208,39 @@ function SignUpForm() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none ${
-                  referralValid && invitedEmail ? "bg-gray-50" : ""
+                  (referralValid && invitedEmail) || (familyValid && email) ? "bg-gray-50" : ""
                 }`}
                 required
-                readOnly={!!(referralValid && invitedEmail)}
+                readOnly={!!(referralValid && invitedEmail) || !!(familyValid && email)}
               />
               {referralValid && invitedEmail && (
                 <p className="text-xs text-purple-600 mt-1">
                   Email set by referral invite
                 </p>
               )}
+              {familyValid && email && !referralValid && (
+                <p className="text-xs text-blue-600 mt-1">
+                  Email set by parent invite
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Phone Number{" "}
+                <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="(415) 555-0123"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                autoComplete="tel"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Used to reach you if email isn&apos;t working.
+              </p>
             </div>
 
             <div>

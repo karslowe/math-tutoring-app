@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken } from "@/lib/auth-helpers";
+import { extractToken, verifyToken, getHouseholdSub } from "@/lib/auth-helpers";
 import {
   getUserProfile,
-  upsertUserProfile,
+  ensureUserProfile,
   updateSurvey,
 } from "@/lib/dynamodb";
 import { sendSurveyCompletedEmail } from "@/lib/ses";
@@ -40,7 +40,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const profile = await getUserProfile(user.sub);
+    const householdSub = await getHouseholdSub(user.sub);
+    const profile = await getUserProfile(householdSub);
     return NextResponse.json({
       surveyCompleted: profile?.surveyCompleted === true,
       surveySubject: profile?.surveySubject || null,
@@ -81,22 +82,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid goal" }, { status: 400 });
     }
 
-    let profile = await getUserProfile(user.sub);
+    const householdSub = await getHouseholdSub(user.sub);
+    let profile = await getUserProfile(householdSub);
     if (!profile) {
       profile = {
-        sub: user.sub,
+        sub: householdSub,
         email: user.email,
         displayName: user.email.split("@")[0],
         role: "student",
-        freeSessionCredits: 1,
+        freeSessionCredits: householdSub === user.sub ? 1 : 0,
         surveySubject: subject,
         surveyGoal: goal,
         surveyCompleted: true,
         createdAt: new Date().toISOString(),
       };
-      await upsertUserProfile(profile);
+      // Conditional put so we don't overwrite a profile created by a
+      // concurrent request. If one already exists, fall through to update.
+      await ensureUserProfile(profile);
+      const existing = await getUserProfile(householdSub);
+      if (existing) {
+        profile = existing;
+        await updateSurvey(householdSub, subject, goal);
+      }
     } else {
-      await updateSurvey(user.sub, subject, goal);
+      await updateSurvey(householdSub, subject, goal);
     }
 
     try {

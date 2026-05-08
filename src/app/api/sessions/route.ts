@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken } from "@/lib/auth-helpers";
+import { extractToken, verifyToken, getHouseholdSub } from "@/lib/auth-helpers";
 import {
   createSession,
   getSessionsByStudent,
@@ -19,7 +19,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const sessions = await getSessionsByStudent(user.sub);
+    const householdSub = await getHouseholdSub(user.sub);
+    const sessions = await getSessionsByStudent(householdSub);
     return NextResponse.json({ sessions });
   } catch (error: any) {
     console.error("Get sessions error:", error);
@@ -43,10 +44,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const householdSub = await getHouseholdSub(user.sub);
 
     const session: TutoringSession = {
       id: randomUUID(),
-      studentSub: user.sub,
+      studentSub: householdSub,
       studentEmail: user.email,
       scheduledAt: body.scheduledAt,
       duration: body.duration || 60,

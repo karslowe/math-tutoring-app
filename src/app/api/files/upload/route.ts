@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken } from "@/lib/auth-helpers";
+import { extractToken, verifyToken, getHouseholdSub } from "@/lib/auth-helpers";
 import { uploadFile, getStudentUploadPrefix } from "@/lib/s3";
 
 export async function POST(request: NextRequest) {
@@ -29,8 +29,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const householdSub = await getHouseholdSub(user.sub);
     const buffer = Buffer.from(await file.arrayBuffer());
-    const prefix = getStudentUploadPrefix(user.sub);
+    const prefix = getStudentUploadPrefix(householdSub);
     const key = `${prefix}${file.name}`;
 
     await uploadFile(key, buffer, file.type);

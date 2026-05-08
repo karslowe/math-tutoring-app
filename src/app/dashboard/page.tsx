@@ -28,6 +28,7 @@ export default function DashboardPage() {
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [credits, setCredits] = useState(0);
   const [referralMessage, setReferralMessage] = useState("");
+  const [familyMessage, setFamilyMessage] = useState("");
 
   const isStudent = !user?.groups?.includes("tutors");
   const zoomLink = process.env.NEXT_PUBLIC_ZOOM_LINK || "";
@@ -94,11 +95,77 @@ export default function DashboardPage() {
     }
   }, [isStudent, getToken, fetchCredits]);
 
+  // Save phone collected at signup (after first login).
+  const savePendingPhone = useCallback(async () => {
+    const pending = sessionStorage.getItem("pendingPhone");
+    if (!pending) return;
+    try {
+      const token = await getToken();
+      await fetch("/api/profile/phone", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone: pending }),
+      });
+    } catch {
+      // silently fail
+    } finally {
+      sessionStorage.removeItem("pendingPhone");
+    }
+  }, [getToken]);
+
+  // Always probe for a pending family invite linked to this user's email.
+  // The endpoint is a no-op if there's nothing pending. We don't gate on
+  // sessionStorage so that linking is robust to confirm/signin happening in
+  // a different tab or session.
+  const redeemFamilyInvite = useCallback(async () => {
+    try {
+      const familyToken = sessionStorage.getItem("familyInviteToken");
+      const token = await getToken();
+      const res = await fetch("/api/family/invitations/redeem", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(familyToken ? { token: familyToken } : {}),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          const who = data.parentName || data.parentEmail || "your parent";
+          setFamilyMessage(`Account linked to ${who}.`);
+        }
+      }
+    } catch {
+      // silently fail
+    } finally {
+      sessionStorage.removeItem("familyInviteToken");
+    }
+  }, [getToken]);
+
   useEffect(() => {
-    fetchBookings();
-    fetchCredits();
-    redeemReferral();
-  }, [fetchBookings, fetchCredits, redeemReferral]);
+    // Run signup-side-effects FIRST so the household link / referral / phone
+    // are persisted before we fetch bookings and credits — otherwise the
+    // initial fetch sees the student's empty data instead of the household's.
+    (async () => {
+      await Promise.all([
+        savePendingPhone(),
+        redeemReferral(),
+        redeemFamilyInvite(),
+      ]);
+      await Promise.all([fetchBookings(), fetchCredits()]);
+    })();
+  }, [
+    fetchBookings,
+    fetchCredits,
+    redeemReferral,
+    redeemFamilyInvite,
+    savePendingPhone,
+  ]);
 
   return (
     <ProtectedRoute>
@@ -106,7 +173,7 @@ export default function DashboardPage() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-600 mt-1">
-            Welcome back, {user?.name || user?.email?.split("@")[0] || user?.username}
+            Welcome back, {user?.name || user?.email?.split("@")[0]}
           </p>
         </div>
 
@@ -169,6 +236,13 @@ export default function DashboardPage() {
             {referralMessage && (
               <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
                 <p className="text-sm text-purple-800 font-medium">{referralMessage}</p>
+              </div>
+            )}
+
+            {/* Family-invite welcome message */}
+            {familyMessage && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+                <p className="text-sm text-blue-800 font-medium">{familyMessage}</p>
               </div>
             )}
 
@@ -359,10 +433,6 @@ export default function DashboardPage() {
             <div className="flex items-center gap-3 text-sm">
               <span className="text-gray-500">Email:</span>
               <span className="text-gray-900">{user?.email}</span>
-            </div>
-            <div className="flex items-center gap-3 text-sm">
-              <span className="text-gray-500">Username:</span>
-              <span className="text-gray-900">{user?.username}</span>
             </div>
             <div className="flex items-center gap-3 text-sm">
               <span className="text-gray-500">Role:</span>

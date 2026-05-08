@@ -109,6 +109,9 @@ export interface UserProfile {
   displayName: string;
   role: "student" | "tutor";
   parentEmail?: string;
+  parentSub?: string;
+  parentName?: string;
+  phone?: string;
   freeSessionCredits?: number;
   referredBy?: string;
   surveyCompleted?: boolean;
@@ -150,6 +153,45 @@ export async function updateParentEmail(
       Key: { sub },
       UpdateExpression: "SET parentEmail = :parentEmail",
       ExpressionAttributeValues: { ":parentEmail": parentEmail },
+    })
+  );
+}
+
+export async function updateUserPhone(
+  sub: string,
+  phone: string
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: awsConfig.dynamodb.usersTable,
+      Key: { sub },
+      UpdateExpression: "SET phone = :phone",
+      ExpressionAttributeValues: { ":phone": phone },
+    })
+  );
+}
+
+export async function updateParentLink(
+  studentSub: string,
+  parentSub: string,
+  parentEmail: string,
+  parentName?: string
+): Promise<void> {
+  const updates = parentName
+    ? "SET parentSub = :psub, parentEmail = :pemail, parentName = :pname"
+    : "SET parentSub = :psub, parentEmail = :pemail";
+  const values: Record<string, string> = {
+    ":psub": parentSub,
+    ":pemail": parentEmail,
+  };
+  if (parentName) values[":pname"] = parentName;
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: awsConfig.dynamodb.usersTable,
+      Key: { sub: studentSub },
+      UpdateExpression: updates,
+      ExpressionAttributeValues: values,
     })
   );
 }
@@ -528,6 +570,37 @@ export async function updateReferralCreditAwarded(
 
 // ── Free session credit operations ──
 
+/**
+ * Initialize a brand-new user profile only if no item exists for this sub.
+ * Uses a conditional PutItem so concurrent callers don't clobber each other —
+ * specifically guards against the family-invite redeem and credits route both
+ * trying to create the profile at first login.
+ */
+export async function ensureUserProfile(
+  profile: UserProfile
+): Promise<void> {
+  try {
+    await docClient.send(
+      new PutCommand({
+        TableName: awsConfig.dynamodb.usersTable,
+        Item: profile,
+        // `sub` is a DynamoDB reserved word, so alias it.
+        ConditionExpression: "attribute_not_exists(#sub)",
+        ExpressionAttributeNames: { "#sub": "sub" },
+      })
+    );
+  } catch (err: any) {
+    if (
+      err.name === "ConditionalCheckFailedException" ||
+      err.__type?.includes("ConditionalCheckFailedException")
+    ) {
+      // Profile already exists — that's fine, just return.
+      return;
+    }
+    throw err;
+  }
+}
+
 export async function incrementFreeSessionCredits(
   sub: string,
   amount: number = 1
@@ -552,6 +625,99 @@ export async function decrementFreeSessionCredit(
       UpdateExpression: "SET freeSessionCredits = freeSessionCredits - :one",
       ExpressionAttributeValues: { ":one": 1, ":zero": 0 },
       ConditionExpression: "freeSessionCredits > :zero",
+    })
+  );
+}
+
+// ── Family invitation operations (parent → student linking) ──
+
+export type FamilyInvitationStatus = "pending" | "accepted";
+
+export interface FamilyInvitation {
+  token: string;
+  parentSub: string;
+  parentEmail: string;
+  parentName?: string;
+  invitedStudentEmail: string;
+  status: FamilyInvitationStatus;
+  createdAt: string;
+  expiresAt: string;
+  redeemedBySub?: string;
+  redeemedAt?: string;
+}
+
+export async function createFamilyInvitation(
+  invite: FamilyInvitation
+): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: awsConfig.dynamodb.familyInvitationsTable,
+      Item: invite,
+    })
+  );
+}
+
+export async function getFamilyInvitation(
+  token: string
+): Promise<FamilyInvitation | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: awsConfig.dynamodb.familyInvitationsTable,
+      Key: { token },
+    })
+  );
+  return (result.Item as FamilyInvitation) || null;
+}
+
+export async function getFamilyInvitationsByParent(
+  parentSub: string
+): Promise<FamilyInvitation[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: awsConfig.dynamodb.familyInvitationsTable,
+      IndexName: "parentSub-createdAt-index",
+      KeyConditionExpression: "parentSub = :sub",
+      ExpressionAttributeValues: { ":sub": parentSub },
+      ScanIndexForward: false,
+    })
+  );
+  return (result.Items || []) as FamilyInvitation[];
+}
+
+export async function getFamilyInvitationByInvitedEmail(
+  email: string
+): Promise<FamilyInvitation | null> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: awsConfig.dynamodb.familyInvitationsTable,
+      IndexName: "invitedStudentEmail-index",
+      KeyConditionExpression: "invitedStudentEmail = :email",
+      ExpressionAttributeValues: { ":email": email.toLowerCase() },
+      Limit: 1,
+    })
+  );
+  const items = (result.Items || []) as FamilyInvitation[];
+  return items.length > 0 ? items[0] : null;
+}
+
+export async function markFamilyInvitationAccepted(
+  token: string,
+  redeemedBySub: string
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: awsConfig.dynamodb.familyInvitationsTable,
+      Key: { token },
+      UpdateExpression:
+        "SET #status = :accepted, redeemedBySub = :sub, redeemedAt = :now",
+      ExpressionAttributeNames: { "#status": "status" },
+      ExpressionAttributeValues: {
+        ":accepted": "accepted",
+        ":sub": redeemedBySub,
+        ":now": new Date().toISOString(),
+        ":pending": "pending",
+      },
+      ConditionExpression: "#status = :pending",
     })
   );
 }

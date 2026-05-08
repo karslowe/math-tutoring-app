@@ -8,36 +8,49 @@ export default function SettingsPage() {
   const { user, getToken } = useAuth();
   const [parentEmail, setParentEmail] = useState("");
   const [savedEmail, setSavedEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [savedPhone, setSavedPhone] = useState("");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [savingPhone, setSavingPhone] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    async function fetchParentEmail() {
+    async function loadSettings() {
       try {
         const token = await getToken();
-        const res = await fetch("/api/profile/parent-email", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
+        const [emailRes, phoneRes] = await Promise.all([
+          fetch("/api/profile/parent-email", {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch("/api/profile/phone", {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+        if (emailRes.ok) {
+          const data = await emailRes.json();
           setParentEmail(data.parentEmail || "");
           setSavedEmail(data.parentEmail || "");
         }
-      } catch (err: any) {
+        if (phoneRes.ok) {
+          const data = await phoneRes.json();
+          setPhone(data.phone || "");
+          setSavedPhone(data.phone || "");
+        }
+      } catch {
         setError("Failed to load settings");
       } finally {
         setLoading(false);
       }
     }
 
-    fetchParentEmail();
+    loadSettings();
   }, [getToken]);
 
-  async function handleSave(e: React.FormEvent) {
+  async function handleSaveParentEmail(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
+    setSavingEmail(true);
     setError("");
     setSuccess("");
 
@@ -58,11 +71,43 @@ export default function SettingsPage() {
       }
 
       setSavedEmail(parentEmail.trim());
-      setSuccess("Parent email saved successfully!");
+      setSuccess("Parent email saved.");
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setSaving(false);
+      setSavingEmail(false);
+    }
+  }
+
+  async function handleSavePhone(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingPhone(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/profile/phone", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone: phone.trim() }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to save");
+      }
+
+      setSavedPhone(data.phone || "");
+      setPhone(data.phone || "");
+      setSuccess(data.phone ? "Phone number saved." : "Phone number cleared.");
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSavingPhone(false);
     }
   }
 
@@ -98,11 +143,79 @@ export default function SettingsPage() {
               <span className="text-gray-500 w-24">Email:</span>
               <span className="text-gray-900">{user?.email}</span>
             </div>
-            <div className="flex items-center gap-3 text-sm">
-              <span className="text-gray-500 w-24">Username:</span>
-              <span className="text-gray-900">{user?.username}</span>
-            </div>
+            {user?.name && (
+              <div className="flex items-center gap-3 text-sm">
+                <span className="text-gray-500 w-24">Name:</span>
+                <span className="text-gray-900">{user.name}</span>
+              </div>
+            )}
           </div>
+        </div>
+
+        {/* Phone */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">
+            Phone Number
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Add a phone number so your tutor can reach you if email isn&apos;t
+            working. We&apos;ll only use it for tutoring-related contact.
+          </p>
+
+          {loading ? (
+            <div className="h-10 bg-gray-100 animate-pulse rounded-lg" />
+          ) : (
+            <form onSubmit={handleSavePhone} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone (any format)
+                </label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    setSuccess("");
+                  }}
+                  placeholder="(415) 555-0123"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  autoComplete="tel"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  US numbers are auto-formatted; international numbers should
+                  start with &quot;+&quot;.
+                </p>
+              </div>
+
+              {savedPhone && (
+                <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 rounded-lg px-3 py-2">
+                  Saved: <strong>{savedPhone}</strong>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={savingPhone}
+                  className="bg-primary-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-50"
+                >
+                  {savingPhone ? "Saving..." : "Save"}
+                </button>
+                {phone && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPhone("");
+                      setSuccess("");
+                    }}
+                    className="text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </form>
+          )}
         </div>
 
         {/* Parent Email */}
@@ -119,7 +232,7 @@ export default function SettingsPage() {
           {loading ? (
             <div className="h-10 bg-gray-100 animate-pulse rounded-lg" />
           ) : (
-            <form onSubmit={handleSave} className="space-y-4">
+            <form onSubmit={handleSaveParentEmail} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Parent Email Address
@@ -159,10 +272,10 @@ export default function SettingsPage() {
               <div className="flex items-center gap-3">
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={savingEmail}
                   className="bg-primary-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-50"
                 >
-                  {saving ? "Saving..." : "Save"}
+                  {savingEmail ? "Saving..." : "Save"}
                 </button>
                 {parentEmail && (
                   <button

@@ -25,7 +25,7 @@ interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
   signIn: (username: string, password: string) => Promise<void>;
-  signUp: (username: string, email: string, password: string, name: string) => Promise<void>;
+  signUp: (email: string, password: string, name: string) => Promise<void>;
   confirmSignUp: (username: string, code: string) => Promise<void>;
   signOut: () => void;
   forgotPassword: (username: string) => Promise<void>;
@@ -60,8 +60,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const handleSignUp = useCallback(
-    async (username: string, email: string, password: string, name: string) => {
-      await cognitoSignUp(username, email, password, name);
+    async (email: string, password: string, name: string) => {
+      await cognitoSignUp(email, password, name);
     },
     []
   );

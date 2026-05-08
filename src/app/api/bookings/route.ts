@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken } from "@/lib/auth-helpers";
+import { extractToken, verifyToken, getHouseholdSub } from "@/lib/auth-helpers";
 import {
   bookSession,
   cancelBooking,
@@ -56,9 +56,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const householdSub = await getHouseholdSub(user.sub);
+
     const session: TutoringSession = {
       id: randomUUID(),
-      studentSub: user.sub,
+      studentSub: householdSub,
       studentEmail: user.email,
       scheduledAt,
       duration: 60,
@@ -72,10 +74,10 @@ export async function POST(request: NextRequest) {
 
     await bookSession(session);
 
-    // Decrement free session credit if used
+    // Decrement free session credit if used (shared household pool)
     if (useFreeCredit) {
       try {
-        await decrementFreeSessionCredit(user.sub);
+        await decrementFreeSessionCredit(householdSub);
       } catch (creditError) {
         console.error("Failed to decrement credit:", creditError);
         // Don't fail the booking if credit decrement fails
@@ -85,9 +87,12 @@ export async function POST(request: NextRequest) {
     // Send confirmation email (non-blocking)
     try {
       const recipients = [user.email];
-      const profile = await getUserProfile(user.sub);
+      const profile = await getUserProfile(householdSub);
       if (profile?.parentEmail) {
         recipients.push(profile.parentEmail);
+      }
+      if (profile?.email && profile.email !== user.email) {
+        recipients.push(profile.email);
       }
       // Notify tutor
       const tutorEmail = process.env.TUTOR_EMAIL;
@@ -154,7 +159,8 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    if (session.studentSub !== user.sub) {
+    const householdSub = await getHouseholdSub(user.sub);
+    if (session.studentSub !== user.sub && session.studentSub !== householdSub) {
       return NextResponse.json(
         { error: "You can only cancel your own bookings" },
         { status: 403 }
@@ -173,9 +179,12 @@ export async function DELETE(request: NextRequest) {
     // Send cancellation email (non-blocking)
     try {
       const recipients = [user.email];
-      const profile = await getUserProfile(user.sub);
+      const profile = await getUserProfile(householdSub);
       if (profile?.parentEmail) {
         recipients.push(profile.parentEmail);
+      }
+      if (profile?.email && profile.email !== user.email) {
+        recipients.push(profile.email);
       }
       // Notify tutor
       const tutorEmail = process.env.TUTOR_EMAIL;
@@ -216,7 +225,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const sessions = await getSessionsByStudent(user.sub);
+    const householdSub = await getHouseholdSub(user.sub);
+    const sessions = await getSessionsByStudent(householdSub);
     const upcoming = sessions.filter(
       (s) =>
         s.status === "scheduled" && new Date(s.scheduledAt) > new Date()

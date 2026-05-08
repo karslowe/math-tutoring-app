@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken } from "@/lib/auth-helpers";
+import { extractToken, verifyToken, getHouseholdSub } from "@/lib/auth-helpers";
 import { listFiles, getDownloadUrl, getStudentUploadPrefix } from "@/lib/s3";
 
 export async function GET(request: NextRequest) {
@@ -14,7 +14,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const prefix = getStudentUploadPrefix(user.sub);
+    const householdSub = await getHouseholdSub(user.sub);
+    const prefix = getStudentUploadPrefix(householdSub);
     const files = await listFiles(prefix);
 
     const filesWithUrls = await Promise.all(

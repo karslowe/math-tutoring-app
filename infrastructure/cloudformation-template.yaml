@@ -116,6 +116,40 @@ Resources:
         - AttributeName: sub
           KeyType: HASH
 
+  # ── Family Invitations Table (parent → student linking invites) ──
+  FamilyInvitationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: math-tutoring-family-invitations
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: token
+          AttributeType: S
+        - AttributeName: parentSub
+          AttributeType: S
+        - AttributeName: invitedStudentEmail
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: token
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: parentSub-createdAt-index
+          KeySchema:
+            - AttributeName: parentSub
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: invitedStudentEmail-index
+          KeySchema:
+            - AttributeName: invitedStudentEmail
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
   # ── Availability Table (tutor schedule) ──
   AvailabilityTable:
     Type: AWS::DynamoDB::Table
@@ -290,3 +324,6 @@ Outputs:
   AvailabilityTableName:
     Value: !Ref AvailabilityTable
     Description: DynamoDB availability table name
+  FamilyInvitationsTableName:
+    Value: !Ref FamilyInvitationsTable
+    Description: DynamoDB family invitations table name
