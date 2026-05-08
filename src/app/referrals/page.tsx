@@ -204,7 +204,7 @@ export default function ReferralsPage() {
         </div>
 
         {/* Invite Form */}
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 mb-6">
+        <div className="bg-white/95 rounded-2xl p-6 border border-gray-200/60 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.08)] mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">
             Invite a Friend
           </h2>
@@ -237,7 +237,7 @@ export default function ReferralsPage() {
         </div>
 
         {/* Sent Referrals */}
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+        <div className="bg-white/95 rounded-2xl p-6 border border-gray-200/60 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.08)]">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">
             Your Referrals
           </h2>

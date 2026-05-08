@@ -46,8 +46,8 @@ export default function ForgotPasswordPage() {
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-6 text-center">
+        <div className="bg-white/95 rounded-2xl border border-gray-200/60 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.08)] p-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-6 text-center tracking-tight">
             Reset Password
           </h1>
 
@@ -67,7 +67,7 @@ export default function ForgotPasswordPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                  className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500"
                   autoComplete="email"
                   required
                 />
@@ -75,7 +75,7 @@ export default function ForgotPasswordPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-primary-600 text-white py-2.5 rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                className="w-full bg-primary-600 text-white py-2.5 rounded-full font-medium hover:bg-primary-700 hover:shadow-md disabled:opacity-50 transition-all"
               >
                 {loading ? "Sending code..." : "Send Reset Code"}
               </button>
@@ -90,7 +90,7 @@ export default function ForgotPasswordPage() {
                   type="text"
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-center tracking-widest"
+                  className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-2xl text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500"
                   required
                 />
               </div>
@@ -102,7 +102,7 @@ export default function ForgotPasswordPage() {
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                  className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500"
                   required
                   minLength={8}
                 />
@@ -110,7 +110,7 @@ export default function ForgotPasswordPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-primary-600 text-white py-2.5 rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                className="w-full bg-primary-600 text-white py-2.5 rounded-full font-medium hover:bg-primary-700 hover:shadow-md disabled:opacity-50 transition-all"
               >
                 {loading ? "Resetting..." : "Reset Password"}
               </button>

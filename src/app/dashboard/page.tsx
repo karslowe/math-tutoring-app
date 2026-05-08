@@ -313,7 +313,7 @@ export default function DashboardPage() {
           /* ── Student Dashboard: 4-quadrant viewport-fit layout ── */
           <div className="grid grid-cols-1 lg:grid-cols-2 lg:grid-rows-2 gap-3 flex-1 min-h-0">
             {/* Top-left: Progress visualization */}
-            <div className="bg-white rounded-xl p-3 shadow-sm border border-gray-200 flex flex-col min-h-0 overflow-hidden">
+            <div className="bg-white/95 rounded-2xl p-3 border border-gray-200/60 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.08)] flex flex-col min-h-0 overflow-hidden">
               <div className="flex items-center justify-between mb-1 flex-shrink-0">
                 <h2 className="text-sm font-semibold text-gray-900">
                   Your Progress
@@ -337,7 +337,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Top-right: Calendar (or Zoom-now if session today) */}
-            <div className="bg-white rounded-xl p-3 shadow-sm border border-gray-200 flex flex-col min-h-0 overflow-hidden">
+            <div className="bg-white/95 rounded-2xl p-3 border border-gray-200/60 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.08)] flex flex-col min-h-0 overflow-hidden">
               {todaySession ? (
                 <div className="flex flex-col items-center justify-center h-full text-center">
                   <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mb-2">
@@ -367,7 +367,7 @@ export default function DashboardPage() {
                       href={zoomLink}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-block bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-semibold text-sm transition-colors"
+                      className="inline-block bg-primary-600 hover:bg-primary-700 hover:shadow-md text-white px-6 py-2.5 rounded-full font-medium text-sm transition-all"
                     >
                       Join Zoom Now
                     </a>
@@ -398,7 +398,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Bottom-left: Completed notes thumbnails */}
-            <div className="bg-white rounded-xl p-3 shadow-sm border border-gray-200 flex flex-col min-h-0 overflow-hidden">
+            <div className="bg-white/95 rounded-2xl p-3 border border-gray-200/60 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.08)] flex flex-col min-h-0 overflow-hidden">
               <div className="flex items-center justify-between mb-1 flex-shrink-0">
                 <h2 className="text-sm font-semibold text-gray-900">
                   Completed Notes
@@ -460,17 +460,17 @@ export default function DashboardPage() {
             </div>
 
             {/* Bottom-right: 3 quick-action icons */}
-            <div className="bg-white rounded-xl p-3 shadow-sm border border-gray-200 flex flex-col min-h-0 overflow-hidden">
+            <div className="bg-white/95 rounded-2xl p-3 border border-gray-200/60 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.08)] flex flex-col min-h-0 overflow-hidden">
               <h2 className="text-sm font-semibold text-gray-900 mb-2 flex-shrink-0">
                 Quick Actions
               </h2>
               <div className="grid grid-cols-3 gap-2 flex-1 min-h-0">
                 <Link
                   href="/my-files"
-                  className="flex flex-col items-center justify-center rounded-lg border border-gray-200 hover:border-primary-300 hover:bg-primary-50 transition-colors p-2"
+                  className="flex flex-col items-center justify-center rounded-xl border border-gray-200 hover:border-violet-300 hover:bg-violet-50 transition-colors p-2"
                 >
                   <svg
-                    className="w-7 h-7 text-primary-600 mb-1"
+                    className="w-7 h-7 text-violet-600 mb-1"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -488,10 +488,10 @@ export default function DashboardPage() {
                 </Link>
                 <Link
                   href="/referrals"
-                  className="flex flex-col items-center justify-center rounded-lg border border-gray-200 hover:border-purple-300 hover:bg-purple-50 transition-colors p-2"
+                  className="flex flex-col items-center justify-center rounded-xl border border-gray-200 hover:border-fuchsia-300 hover:bg-fuchsia-50 transition-colors p-2"
                 >
                   <svg
-                    className="w-7 h-7 text-purple-600 mb-1"
+                    className="w-7 h-7 text-fuchsia-600 mb-1"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -509,10 +509,10 @@ export default function DashboardPage() {
                 </Link>
                 <Link
                   href="/session-history"
-                  className="flex flex-col items-center justify-center rounded-lg border border-gray-200 hover:border-teal-300 hover:bg-teal-50 transition-colors p-2"
+                  className="flex flex-col items-center justify-center rounded-xl border border-gray-200 hover:border-purple-300 hover:bg-purple-50 transition-colors p-2"
                 >
                   <svg
-                    className="w-7 h-7 text-teal-600 mb-1"
+                    className="w-7 h-7 text-purple-600 mb-1"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"

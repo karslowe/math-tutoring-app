@@ -45,17 +45,28 @@ const LEVEL_COLORS: Record<string, string> = {
   Mastered: "bg-green-100 text-green-700 border-green-200",
 };
 
-const LINE_COLORS = [
-  "#6366f1", // indigo
-  "#f59e0b", // amber
-  "#10b981", // emerald
-  "#ef4444", // red
-  "#8b5cf6", // violet
-  "#06b6d4", // cyan
-  "#f97316", // orange
-  "#ec4899", // pink
-  "#14b8a6", // teal
-  "#84cc16", // lime
+// Per-topic gradients in the purple/pink/violet family. Each pair is chosen
+// to be visually distinct — varying brightness (light↔dark), temperature
+// (cool indigo ↔ warm rose), and direction — so users can tell topics apart
+// at a glance while staying on-theme. `marker` is the solid mid-tone used for
+// dots/legend, since SVG `url()` refs don't render inside small circles.
+const LINE_GRADIENTS = [
+  // 1. Deep indigo → hot pink (cool dark → warm bright)
+  { id: "topic-grad-0", from: "#4338ca", to: "#ec4899", marker: "#7c3aed" },
+  // 2. Soft pink → royal violet (warm light → cool dark)
+  { id: "topic-grad-1", from: "#f472b6", to: "#6d28d9", marker: "#c026d3" },
+  // 3. Bright magenta → coral rose (vivid pink range)
+  { id: "topic-grad-2", from: "#d946ef", to: "#fb7185", marker: "#e879f9" },
+  // 4. Plum → bright rose (dramatic dark→bright)
+  { id: "topic-grad-3", from: "#86198f", to: "#f43f5e", marker: "#a21caf" },
+  // 5. Lavender → fuchsia (light & airy)
+  { id: "topic-grad-4", from: "#a78bfa", to: "#d946ef", marker: "#a855f7" },
+  // 6. Crimson pink → sky violet (warm→cool light)
+  { id: "topic-grad-5", from: "#be185d", to: "#818cf8", marker: "#db2777" },
+  // 7. Soft rose → bold purple (light→saturated)
+  { id: "topic-grad-6", from: "#fda4af", to: "#7c3aed", marker: "#f472b6" },
+  // 8. Bright magenta → deep indigo (purple→navy-violet)
+  { id: "topic-grad-7", from: "#c026d3", to: "#4f46e5", marker: "#9333ea" },
 ];
 
 function formatDateShort(dateStr: string): string {
@@ -145,6 +156,21 @@ export default function ProgressChart({ progress, compact }: ProgressChartProps)
             data={chartData}
             margin={{ top: 4, right: 8, left: 0, bottom: 4 }}
           >
+            <defs>
+              {LINE_GRADIENTS.map((g) => (
+                <linearGradient
+                  key={g.id}
+                  id={g.id}
+                  x1="0"
+                  y1="0"
+                  x2="1"
+                  y2="0"
+                >
+                  <stop offset="0%" stopColor={g.from} />
+                  <stop offset="100%" stopColor={g.to} />
+                </linearGradient>
+              ))}
+            </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis
               dataKey="date"
@@ -160,18 +186,26 @@ export default function ProgressChart({ progress, compact }: ProgressChartProps)
               width={40}
             />
             <Tooltip content={<CustomTooltip />} />
-            {progress.map((topic, i) => (
-              <Line
-                key={topic.topicName}
-                type="monotone"
-                dataKey={topic.topicName}
-                stroke={LINE_COLORS[i % LINE_COLORS.length]}
-                strokeWidth={2}
-                dot={{ r: 3, strokeWidth: 1.5, fill: "#fff" }}
-                activeDot={{ r: 5 }}
-                connectNulls
-              />
-            ))}
+            {progress.map((topic, i) => {
+              const grad = LINE_GRADIENTS[i % LINE_GRADIENTS.length];
+              return (
+                <Line
+                  key={topic.topicName}
+                  type="monotone"
+                  dataKey={topic.topicName}
+                  stroke={`url(#${grad.id})`}
+                  strokeWidth={2.5}
+                  dot={{
+                    r: 3,
+                    strokeWidth: 1.5,
+                    stroke: grad.marker,
+                    fill: "#fff",
+                  }}
+                  activeDot={{ r: 5, fill: grad.marker, stroke: "#fff" }}
+                  connectNulls
+                />
+              );
+            })}
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -187,6 +221,21 @@ export default function ProgressChart({ progress, compact }: ProgressChartProps)
             data={chartData}
             margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
           >
+            <defs>
+              {LINE_GRADIENTS.map((g) => (
+                <linearGradient
+                  key={g.id}
+                  id={`${g.id}-full`}
+                  x1="0"
+                  y1="0"
+                  x2="1"
+                  y2="0"
+                >
+                  <stop offset="0%" stopColor={g.from} />
+                  <stop offset="100%" stopColor={g.to} />
+                </linearGradient>
+              ))}
+            </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis
               dataKey="date"
@@ -204,19 +253,32 @@ export default function ProgressChart({ progress, compact }: ProgressChartProps)
             <Tooltip content={<CustomTooltip />} />
             <Legend
               wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+              formatter={(value, _entry, index) => (
+                <span style={{ color: LINE_GRADIENTS[index % LINE_GRADIENTS.length].marker }}>
+                  {value}
+                </span>
+              )}
             />
-            {progress.map((topic, i) => (
-              <Line
-                key={topic.topicName}
-                type="monotone"
-                dataKey={topic.topicName}
-                stroke={LINE_COLORS[i % LINE_COLORS.length]}
-                strokeWidth={2}
-                dot={{ r: 4, strokeWidth: 2, fill: "#fff" }}
-                activeDot={{ r: 6 }}
-                connectNulls
-              />
-            ))}
+            {progress.map((topic, i) => {
+              const grad = LINE_GRADIENTS[i % LINE_GRADIENTS.length];
+              return (
+                <Line
+                  key={topic.topicName}
+                  type="monotone"
+                  dataKey={topic.topicName}
+                  stroke={`url(#${grad.id}-full)`}
+                  strokeWidth={2.5}
+                  dot={{
+                    r: 4,
+                    strokeWidth: 2,
+                    stroke: grad.marker,
+                    fill: "#fff",
+                  }}
+                  activeDot={{ r: 6, fill: grad.marker, stroke: "#fff" }}
+                  connectNulls
+                />
+              );
+            })}
           </LineChart>
         </ResponsiveContainer>
       </div>

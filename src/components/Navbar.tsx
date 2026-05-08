@@ -24,12 +24,12 @@ export function Navbar() {
   }
 
   return (
-    <nav className="bg-white shadow-sm border-b border-gray-200">
+    <nav className="bg-white/70 backdrop-blur-md border-b border-gray-200/40">
       <div className="max-w-6xl mx-auto px-4">
         <div className="flex items-center justify-between h-14">
           <Link
             href={user ? "/dashboard" : "/"}
-            className="text-xl font-bold text-primary-700 tracking-tight"
+            className="text-2xl font-bold tracking-tightest bg-gradient-to-r from-violet-600 via-indigo-600 to-fuchsia-600 bg-clip-text text-transparent hover:opacity-90 transition-opacity"
           >
             KL Math Prep
           </Link>
@@ -111,13 +111,13 @@ export function Navbar() {
               <>
                 <Link
                   href="/auth/signin"
-                  className="text-sm font-medium text-primary-600 hover:text-primary-700"
+                  className="text-sm font-medium text-gray-700 hover:text-gray-900"
                 >
                   Sign In
                 </Link>
                 <Link
                   href="/auth/signup"
-                  className="text-sm font-medium bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 transition-colors"
+                  className="text-sm font-medium bg-primary-600 text-white px-5 py-2 rounded-full hover:bg-primary-700 hover:shadow-md transition-all"
                 >
                   Sign Up
                 </Link>

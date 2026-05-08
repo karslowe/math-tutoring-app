@@ -3,7 +3,40 @@
 @tailwind utilities;
 
 @layer base {
+  html,
   body {
-    @apply bg-gray-50 text-gray-900 antialiased;
+    min-height: 100%;
+  }
+
+  body {
+    @apply text-gray-900 antialiased;
+    background-color: #fafaf9;
+    background-image:
+      radial-gradient(at 100% 100%, rgba(196, 181, 253, 0.45) 0%, transparent 55%),
+      radial-gradient(at 0% 0%, rgba(255, 255, 255, 0.9) 0%, transparent 50%),
+      linear-gradient(160deg, #fafaf9 0%, #f5f3ff 45%, #ede9fe 100%);
+    background-attachment: fixed;
+    background-size: cover;
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.025em;
+  }
+}
+
+@layer components {
+  .card-soft {
+    @apply bg-white/95 rounded-2xl border border-gray-200/60 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.08)];
+  }
+  .btn-pill-primary {
+    @apply inline-flex items-center justify-center bg-primary-600 text-white px-5 py-2.5 rounded-full font-medium text-sm transition-all hover:bg-primary-700 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-pill-secondary {
+    @apply inline-flex items-center justify-center bg-gray-100 text-gray-900 px-5 py-2.5 rounded-full font-medium text-sm transition-all hover:bg-gray-200 disabled:opacity-50;
+  }
+  .input-pill {
+    @apply px-4 py-2.5 bg-white/80 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500;
   }
 }
