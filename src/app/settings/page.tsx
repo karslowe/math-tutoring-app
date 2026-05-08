@@ -1,8 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import Link from "next/link";
+
+interface FamilyInvitation {
+  token: string;
+  invitedStudentEmail: string;
+  status: "pending" | "accepted";
+  createdAt: string;
+  expiresAt: string;
+}
 
 export default function SettingsPage() {
   const { user, getToken } = useAuth();
@@ -15,6 +24,27 @@ export default function SettingsPage() {
   const [savingPhone, setSavingPhone] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const [familyInvitations, setFamilyInvitations] = useState<FamilyInvitation[]>(
+    []
+  );
+  const [studentEmailInvite, setStudentEmailInvite] = useState("");
+  const [sendingInvite, setSendingInvite] = useState(false);
+
+  const fetchFamilyInvitations = useCallback(async () => {
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/family/invitations", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFamilyInvitations(data.invitations || []);
+      }
+    } catch {
+      // silently fail
+    }
+  }, [getToken]);
 
   useEffect(() => {
     async function loadSettings() {
@@ -46,7 +76,39 @@ export default function SettingsPage() {
     }
 
     loadSettings();
-  }, [getToken]);
+    fetchFamilyInvitations();
+  }, [getToken, fetchFamilyInvitations]);
+
+  async function handleInviteStudent(e: React.FormEvent) {
+    e.preventDefault();
+    const email = studentEmailInvite.trim().toLowerCase();
+    if (!email) return;
+    setSendingInvite(true);
+    setError("");
+    setSuccess("");
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/family/invitations", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ invitedStudentEmail: email }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to send invite");
+      }
+      setSuccess(`Invite sent to ${email}.`);
+      setStudentEmailInvite("");
+      fetchFamilyInvitations();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSendingInvite(false);
+    }
+  }
 
   async function handleSaveParentEmail(e: React.FormEvent) {
     e.preventDefault();
@@ -292,6 +354,80 @@ export default function SettingsPage() {
               </div>
             </form>
           )}
+        </div>
+
+        {/* Connect Student Account */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 mt-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">
+            Connect Student Account
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Invite a student so they get their own login linked to your
+            account. They&apos;ll see the same bookings, notes, and progress
+            you do.
+          </p>
+
+          <form onSubmit={handleInviteStudent} className="flex gap-3 mb-4">
+            <input
+              type="email"
+              value={studentEmailInvite}
+              onChange={(e) => setStudentEmailInvite(e.target.value)}
+              placeholder="student@email.com"
+              required
+              className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            />
+            <button
+              type="submit"
+              disabled={sendingInvite || !studentEmailInvite.trim()}
+              className="bg-primary-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-50"
+            >
+              {sendingInvite ? "Sending..." : "Send Invite"}
+            </button>
+          </form>
+
+          {familyInvitations.length > 0 && (
+            <div className="space-y-2">
+              {familyInvitations.map((inv) => {
+                const expired =
+                  inv.status === "pending" &&
+                  new Date(inv.expiresAt) < new Date();
+                const label = expired
+                  ? "Expired"
+                  : inv.status === "accepted"
+                  ? "Linked"
+                  : "Pending";
+                const cls = expired
+                  ? "bg-gray-100 text-gray-500 border-gray-200"
+                  : inv.status === "accepted"
+                  ? "bg-green-100 text-green-700 border-green-200"
+                  : "bg-yellow-100 text-yellow-700 border-yellow-200";
+                return (
+                  <div
+                    key={inv.token}
+                    className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm"
+                  >
+                    <span className="text-gray-700">
+                      {inv.invitedStudentEmail}
+                    </span>
+                    <span
+                      className={`text-xs font-medium px-2.5 py-0.5 rounded-full border ${cls}`}
+                    >
+                      {label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <p className="text-xs text-gray-500 mt-3">
+            <Link
+              href="/family"
+              className="text-primary-600 hover:text-primary-700"
+            >
+              Open full management page →
+            </Link>
+          </p>
         </div>
       </div>
     </ProtectedRoute>

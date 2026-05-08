@@ -27,6 +27,7 @@ interface TopicSummary {
 }
 
 interface ProgressChartProps {
+  compact?: boolean;
   progress: TopicSummary[];
 }
 
@@ -87,7 +88,7 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
-export default function ProgressChart({ progress }: ProgressChartProps) {
+export default function ProgressChart({ progress, compact }: ProgressChartProps) {
   if (!progress || progress.length === 0) {
     return (
       <div className="text-center py-8">
@@ -135,6 +136,47 @@ export default function ProgressChart({ progress }: ProgressChartProps) {
     }
     return point;
   });
+
+  if (compact) {
+    return (
+      <div className="w-full h-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart
+            data={chartData}
+            margin={{ top: 4, right: 8, left: 0, bottom: 4 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 10, fill: "#6b7280" }}
+              tickLine={false}
+            />
+            <YAxis
+              domain={[1, 4]}
+              ticks={[1, 2, 3, 4]}
+              tickFormatter={(v) => LEVEL_LABELS[v]?.slice(0, 4) || ""}
+              tick={{ fontSize: 9, fill: "#6b7280" }}
+              tickLine={false}
+              width={40}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            {progress.map((topic, i) => (
+              <Line
+                key={topic.topicName}
+                type="monotone"
+                dataKey={topic.topicName}
+                stroke={LINE_COLORS[i % LINE_COLORS.length]}
+                strokeWidth={2}
+                dot={{ r: 3, strokeWidth: 1.5, fill: "#fff" }}
+                activeDot={{ r: 5 }}
+                connectNulls
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  }
 
   return (
     <div>

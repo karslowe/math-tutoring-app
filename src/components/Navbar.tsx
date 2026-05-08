@@ -28,7 +28,7 @@ export function Navbar() {
       <div className="max-w-6xl mx-auto px-4">
         <div className="flex items-center justify-between h-14">
           <Link
-            href="/"
+            href={user ? "/dashboard" : "/"}
             className="text-xl font-bold text-primary-700 tracking-tight"
           >
             KL Math Prep
@@ -37,12 +37,14 @@ export function Navbar() {
           <div className="flex items-center gap-6">
             {user ? (
               <>
-                <Link
-                  href="/dashboard"
-                  className={`text-sm font-medium pb-0.5 ${isActive("/dashboard")}`}
-                >
-                  Dashboard
-                </Link>
+                {user.groups?.includes("tutors") ? (
+                  <Link
+                    href="/dashboard"
+                    className={`text-sm font-medium pb-0.5 ${isActive("/dashboard")}`}
+                  >
+                    Dashboard
+                  </Link>
+                ) : null}
                 {user.groups?.includes("tutors") ? (
                   <>
                     <Link
@@ -65,42 +67,39 @@ export function Navbar() {
                     </Link>
                   </>
                 ) : (
-                  <>
-                    <Link
-                      href="/my-files"
-                      className={`text-sm font-medium pb-0.5 ${isActive("/my-files")}`}
+                  <Link
+                    href="/settings"
+                    aria-label="Settings"
+                    className={`p-2 rounded-full transition-colors ${
+                      pathname === "/settings"
+                        ? "text-primary-600 bg-primary-50"
+                        : "text-gray-500 hover:text-primary-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
                     >
-                      My Files
-                    </Link>
-                    <Link
-                      href="/completed-notes"
-                      className={`text-sm font-medium pb-0.5 ${isActive("/completed-notes")}`}
-                    >
-                      Completed Notes
-                    </Link>
-                    <Link
-                      href="/session-history"
-                      className={`text-sm font-medium pb-0.5 ${isActive("/session-history")}`}
-                    >
-                      Session History
-                    </Link>
-                    <Link
-                      href="/family"
-                      className={`text-sm font-medium pb-0.5 ${isActive("/family")}`}
-                    >
-                      Connect Student
-                    </Link>
-                    <Link
-                      href="/settings"
-                      className={`text-sm font-medium pb-0.5 ${isActive("/settings")}`}
-                    >
-                      Settings
-                    </Link>
-                  </>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                    </svg>
+                  </Link>
                 )}
-                <span className="text-sm text-gray-500">
-                  {user.email}
-                </span>
+                {user.groups?.includes("tutors") && (
+                  <span className="text-sm text-gray-500">{user.email}</span>
+                )}
                 <button
                   onClick={signOut}
                   className="text-sm text-red-600 hover:text-red-700 font-medium"
