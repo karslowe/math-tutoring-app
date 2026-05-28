@@ -306,6 +306,48 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt WeeklyBlockResetRule.Arn
 
+  # Cognito Pre Sign-up trigger: auto-confirms new users and marks email as
+  # verified so signups skip the emailed code (SES delivery was unreliable).
+  # The UserPool above must also set LambdaConfig.PreSignUp to this function's Arn.
+  PreSignUpRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: math-tutoring-pre-signup-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  PreSignUpLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: math-tutoring-pre-signup
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt PreSignUpRole.Arn
+      Timeout: 5
+      Code:
+        ZipFile: |
+          // Deploy the actual code from infrastructure/lambda/pre-signup/index.mjs
+          export async function handler(event) {
+            event.response.autoConfirmUser = true;
+            event.response.autoVerifyEmail = true;
+            return event;
+          }
+
+  PreSignUpInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PreSignUpLambda
+      Action: lambda:InvokeFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt UserPool.Arn
+
 Outputs:
   UserPoolId:
     Value: !Ref UserPool

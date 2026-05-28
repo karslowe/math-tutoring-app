@@ -24,7 +24,7 @@ function SignUpForm() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { signUp, user, getToken } = useAuth();
+  const { signUp, signIn, user, getToken } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -140,7 +140,9 @@ function SignUpForm() {
         sessionStorage.setItem("pendingPhone", normalizedPhone);
       }
 
-      router.push(`/auth/confirm?email=${encodeURIComponent(email)}`);
+      // Pre Sign-up Lambda auto-confirms the account, so we can sign in directly.
+      await signIn(email, password);
+      router.push("/dashboard");
     } catch (err: any) {
       setError(err.message || "Failed to sign up");
     } finally {
