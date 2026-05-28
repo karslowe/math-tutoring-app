@@ -16,13 +16,30 @@ const FROM_EMAIL = process.env.FROM_EMAIL || "";
 const TUTOR_EMAIL = process.env.TUTOR_EMAIL || "";
 const TUTOR_TIMEZONE = process.env.TUTOR_TIMEZONE || "America/Los_Angeles";
 
+// Anchor for the bi-weekly cadence: the first Thursday on which the reset should run.
+// Every 14 days from this date is a reset Thursday; the Thursdays in between are skipped.
+const BIWEEKLY_ANCHOR_UTC_MS = Date.UTC(2026, 5, 4); // 2026-06-04
+
+function isResetWeek(now) {
+  const daysSinceAnchor = Math.floor(
+    (now.getTime() - BIWEEKLY_ANCHOR_UTC_MS) / (24 * 60 * 60 * 1000)
+  );
+  return daysSinceAnchor >= 0 && daysSinceAnchor % 14 === 0;
+}
+
 /**
- * Triggered by EventBridge every Thursday at 6am tutor time.
- * Deletes all OVERRIDE# entries in the availability table, then
- * emails the tutor to remind them to re-block for the upcoming week.
+ * Triggered by EventBridge every Thursday at 9am tutor time. Runs the reset only
+ * on alternating Thursdays (bi-weekly). Deletes all OVERRIDE# entries in the
+ * availability table, then emails the tutor to re-block for the upcoming 2 weeks.
  */
 export async function handler() {
   try {
+    const now = new Date();
+    if (!isResetWeek(now)) {
+      console.log("Off-week Thursday — skipping bi-weekly reset.");
+      return { statusCode: 200, body: "Skipped (off-week)" };
+    }
+
     const scan = await docClient.send(
       new ScanCommand({
         TableName: AVAILABILITY_TABLE,
@@ -44,7 +61,6 @@ export async function handler() {
     }
 
     if (FROM_EMAIL && TUTOR_EMAIL) {
-      const now = new Date();
       const rangeEnd = new Date(now.getTime() + 13 * 24 * 60 * 60 * 1000);
       const rangeStr = `${now.toLocaleDateString("en-US", {
         month: "short",

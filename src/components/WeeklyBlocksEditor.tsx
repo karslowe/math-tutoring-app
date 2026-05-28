@@ -229,9 +229,9 @@ export default function WeeklyBlocksEditor({
     <div className="space-y-4">
       <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
         <p className="text-sm text-amber-800">
-          <strong>Heads up:</strong> All blocks reset every Thursday at 6am PT.
-          You&apos;ll get an email reminder to re-block for the upcoming 2
-          weeks.
+          <strong>Heads up:</strong> All blocks reset every other Thursday at
+          9am PT. You&apos;ll get an email reminder to re-block for the upcoming
+          2 weeks.
         </p>
       </div>
 

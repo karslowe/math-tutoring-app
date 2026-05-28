@@ -284,14 +284,15 @@ Resources:
           // This is a placeholder - use AWS CLI or CI/CD to deploy the real code
           export async function handler() { return { statusCode: 200 }; }
 
-  # EventBridge: Thursday 6am America/Los_Angeles = 13:00 UTC (PST) / 14:00 UTC (PDT).
-  # Using 13:00 UTC means reset fires at 5am PT during DST and 6am PT during standard time.
+  # EventBridge: Thursday 9am America/Los_Angeles = 17:00 UTC (PST) / 16:00 UTC (PDT).
+  # Using 17:00 UTC means reset fires at 9am PT during standard time and 10am PT during DST.
+  # The cron fires weekly; the Lambda itself skips alternating Thursdays to enforce a bi-weekly cadence.
   WeeklyBlockResetRule:
     Type: AWS::Events::Rule
     Properties:
       Name: math-tutoring-weekly-block-reset
-      Description: Clear tutor blocks every Thursday so they re-set for the upcoming week
-      ScheduleExpression: 'cron(0 13 ? * THU *)'
+      Description: Clear tutor blocks every other Thursday so they re-set for the upcoming 2 weeks
+      ScheduleExpression: 'cron(0 17 ? * THU *)'
       State: ENABLED
       Targets:
         - Arn: !GetAtt WeeklyBlockResetLambda.Arn
