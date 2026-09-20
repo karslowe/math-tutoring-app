@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken } from "@/lib/auth-helpers";
+import { extractToken, verifyToken, listTutors } from "@/lib/auth-helpers";
 import {
   getWeeklyAvailability,
   getDateOverrides,
@@ -10,7 +10,10 @@ import {
   generateTimeSlots,
   filterBookedSlots,
   filterPastSlots,
+  subtractBusyIntervals,
 } from "@/lib/slots";
+import { getFounderBusyIntervals } from "@/lib/google-calendar";
+import { awsConfig } from "@/lib/aws-config";
 import { addDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 
@@ -48,17 +51,36 @@ export async function GET(request: NextRequest) {
   const endDate = requestedEnd < maxEnd ? requestedEnd : maxEnd;
 
   try {
-    // Fetch all data in parallel
-    const [weeklyAvailability, overrides, bookedSessions] = await Promise.all([
-      getWeeklyAvailability(),
-      getDateOverrides(startDate, endDate),
+    const tutors = await listTutors();
+    if (tutors.length === 0) {
+      return NextResponse.json({ days: [] });
+    }
+
+    // Fetch all data in parallel, per tutor
+    const [tutorData, bookedSessions] = await Promise.all([
+      Promise.all(
+        tutors.map(async (tutor) => ({
+          tutorSub: tutor.sub,
+          weeklyAvailability: await getWeeklyAvailability(tutor.sub),
+          overrides: await getDateOverrides(tutor.sub, startDate, endDate),
+        }))
+      ),
       getScheduledSessionsByDateRange(
         startDate + "T00:00:00.000Z",
         endDate + "T23:59:59.999Z"
       ),
     ]);
 
-    const bookedTimes = bookedSessions.map((s) => s.scheduledAt);
+    // Founder tutor's real-world calendars (School, Personal, RA duty, etc.)
+    // filter his candidacy — see docs/adr/0008. `tutors` is oldest-account-
+    // first, so index 0 is the founder, same convention /api/bookings uses.
+    // If the check fails, treat him as busy the whole window rather than
+    // silently offering slots during something the check couldn't see.
+    const founderSub = tutors[0].sub;
+    const founderBusy = await getFounderBusyIntervals(
+      startDate + "T00:00:00.000Z",
+      endDate + "T23:59:59.999Z"
+    );
 
     // Generate date strings for each day in range (timezone-aware)
     const start = new Date(startDate + "T12:00:00Z"); // noon UTC to avoid date boundary issues
@@ -71,20 +93,36 @@ export async function GET(request: NextRequest) {
       // Format the date in the tutor's timezone to get the correct YYYY-MM-DD
       const dateStr = formatInTimeZone(current, TUTOR_TIMEZONE, "yyyy-MM-dd");
 
-      const windows = getAvailabilityForDate(
-        dateStr,
-        weeklyAvailability,
-        overrides,
-        TUTOR_TIMEZONE
-      );
-      const daySlots = generateTimeSlots(
-        dateStr,
-        windows,
-        60,
-        TUTOR_TIMEZONE
-      );
-      const availableSlots = filterBookedSlots(daySlots, bookedTimes);
-      const futureSlots = filterPastSlots(availableSlots);
+      // A time is bookable if AT LEAST ONE tutor is free at that time —
+      // students never choose a tutor, so slots are a union across tutors.
+      const dayFreeTimes = new Set<string>();
+      for (const t of tutorData) {
+        let windows = getAvailabilityForDate(
+          dateStr,
+          t.weeklyAvailability,
+          t.overrides,
+          TUTOR_TIMEZONE
+        );
+        if (t.tutorSub === founderSub) {
+          windows = founderBusy
+            ? subtractBusyIntervals(
+                windows,
+                dateStr,
+                founderBusy,
+                TUTOR_TIMEZONE,
+                awsConfig.google.bufferMinutes
+              )
+            : [];
+        }
+        const daySlots = generateTimeSlots(dateStr, windows, 60, TUTOR_TIMEZONE);
+        const bookedTimesForTutor = bookedSessions
+          .filter((s) => s.tutorSub === t.tutorSub)
+          .map((s) => s.scheduledAt);
+        const availableSlots = filterBookedSlots(daySlots, bookedTimesForTutor);
+        for (const slot of availableSlots) dayFreeTimes.add(slot);
+      }
+
+      const futureSlots = filterPastSlots(Array.from(dayFreeTimes)).sort();
 
       if (futureSlots.length > 0) {
         allSlots.push({ date: dateStr, slots: futureSlots });

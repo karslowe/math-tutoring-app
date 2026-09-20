@@ -9,6 +9,10 @@ Parameters:
     Type: String
     Default: ''
     Description: Custom domain (leave empty to use Amplify default)
+  GoogleCalendarSecretName:
+    Type: String
+    Default: klmathprep/google-calendar
+    Description: Secrets Manager secret holding the karslowe0@gmail.com OAuth refresh token (see docs/adr/0008; created out-of-band by scripts/google-oauth-authorize.mjs, not by this template)
 
 Resources:
   # ── Cognito User Pool ──
@@ -284,15 +288,17 @@ Resources:
           // This is a placeholder - use AWS CLI or CI/CD to deploy the real code
           export async function handler() { return { statusCode: 200 }; }
 
-  # EventBridge: Thursday 9am America/Los_Angeles = 17:00 UTC (PST) / 16:00 UTC (PDT).
-  # Using 17:00 UTC means reset fires at 9am PT during standard time and 10am PT during DST.
-  # The cron fires weekly; the Lambda itself skips alternating Thursdays to enforce a bi-weekly cadence.
+  # EventBridge: Sunday 10am America/Los_Angeles = 18:00 UTC (PST) / 17:00 UTC (PDT).
+  # Using 18:00 UTC means reset fires at 10am PT during standard time and 11am PT during DST —
+  # same fixed-UTC-offset trade-off the original 9am-Thursday schedule made (EventBridge cron
+  # has no DST-aware "local time" mode), just re-anchored to a 10am nominal target.
+  # The cron fires weekly; the Lambda itself skips alternating Sundays to enforce a bi-weekly cadence.
   WeeklyBlockResetRule:
     Type: AWS::Events::Rule
     Properties:
       Name: math-tutoring-weekly-block-reset
-      Description: Clear tutor blocks every other Thursday so they re-set for the upcoming 2 weeks
-      ScheduleExpression: 'cron(0 17 ? * THU *)'
+      Description: Clear tutor blocks every other Sunday so they re-set for the upcoming 2 weeks
+      ScheduleExpression: 'cron(0 18 ? * SUN *)'
       State: ENABLED
       Targets:
         - Arn: !GetAtt WeeklyBlockResetLambda.Arn
@@ -305,6 +311,74 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt WeeklyBlockResetRule.Arn
+
+  # ── Lambda for Google Calendar token health check (docs/adr/0008) ──
+  # Daily check that the karslowe0@gmail.com refresh token still works, so
+  # an expired/revoked grant surfaces via email before a student hits it
+  # through a silently-failing freebusy check or booking push.
+  GoogleTokenHealthRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: GoogleTokenHealthPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${GoogleCalendarSecretName}-*'
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                Resource: '*'
+
+  GoogleTokenHealthLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: math-tutoring-google-token-health
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt GoogleTokenHealthRole.Arn
+      Timeout: 30
+      Environment:
+        Variables:
+          GOOGLE_CALENDAR_SECRET_NAME: !Ref GoogleCalendarSecretName
+          FROM_EMAIL: !Ref TutorEmail
+          TUTOR_EMAIL: !Ref TutorEmail
+      Code:
+        ZipFile: |
+          // Deploy the actual code from infrastructure/lambda/google-token-health/index.mjs
+          // This is a placeholder - use AWS CLI or CI/CD to deploy the real code
+          export async function handler() { return { statusCode: 200 }; }
+
+  GoogleTokenHealthScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: math-tutoring-google-token-health-schedule
+      Description: Daily check that the Google Calendar refresh token still works
+      ScheduleExpression: 'cron(0 15 * * ? *)' # 7am PT (8am during PDT)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt GoogleTokenHealthLambda.Arn
+          Id: GoogleTokenHealthTarget
+
+  GoogleTokenHealthPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GoogleTokenHealthLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt GoogleTokenHealthScheduleRule.Arn
 
   # Cognito Pre Sign-up trigger: auto-confirms new users and marks email as
   # verified so signups skip the emailed code (SES delivery was unreliable).

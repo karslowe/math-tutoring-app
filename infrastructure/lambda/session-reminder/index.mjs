@@ -1,5 +1,5 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, ScanCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, ScanCommand, UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 
 const dynamoClient = new DynamoDBClient({});
@@ -7,11 +7,38 @@ const docClient = DynamoDBDocumentClient.from(dynamoClient);
 const sesClient = new SESClient({});
 
 const SESSIONS_TABLE = process.env.SESSIONS_TABLE || "math-tutoring-sessions";
+const USERS_TABLE = process.env.USERS_TABLE || "math-tutoring-users";
 const FROM_EMAIL = process.env.FROM_EMAIL || "";
 const TUTOR_NAME = process.env.TUTOR_NAME || "Your Tutor";
-const TUTOR_EMAIL = process.env.TUTOR_EMAIL || "";
+// Fallback only, used if a session's tutor has no profile row (pre-migration data).
+const FALLBACK_TUTOR_EMAIL = process.env.TUTOR_EMAIL || "";
+const FALLBACK_ZOOM_LINK = process.env.ZOOM_LINK || "";
 const TUTOR_TIMEZONE = process.env.TUTOR_TIMEZONE || "America/Los_Angeles";
-const ZOOM_LINK = process.env.ZOOM_LINK || "";
+
+const tutorProfileCache = new Map();
+
+/**
+ * Look up the assigned tutor's own email and meeting room for this session,
+ * falling back to the single legacy env vars for any session without a
+ * tutorSub (pre-migration) or whose tutor has no profile row yet.
+ */
+async function getTutorContactInfo(tutorSub) {
+  if (!tutorSub) {
+    return { email: FALLBACK_TUTOR_EMAIL, zoomLink: FALLBACK_ZOOM_LINK };
+  }
+  if (tutorProfileCache.has(tutorSub)) {
+    return tutorProfileCache.get(tutorSub);
+  }
+  const result = await docClient.send(
+    new GetCommand({ TableName: USERS_TABLE, Key: { sub: tutorSub } })
+  );
+  const info = {
+    email: result.Item?.email || FALLBACK_TUTOR_EMAIL,
+    zoomLink: result.Item?.meetingRoomUrl || FALLBACK_ZOOM_LINK,
+  };
+  tutorProfileCache.set(tutorSub, info);
+  return info;
+}
 
 /**
  * This Lambda is triggered by EventBridge on a schedule (every 15 minutes).
@@ -55,10 +82,14 @@ export async function handler() {
         timeZoneName: "short",
       });
 
-      // Send to student and tutor
+      const { email: tutorEmail, zoomLink: ZOOM_LINK } = await getTutorContactInfo(
+        session.tutorSub
+      );
+
+      // Send to student and their assigned tutor
       const recipients = [session.studentEmail];
-      if (TUTOR_EMAIL && !recipients.includes(TUTOR_EMAIL)) {
-        recipients.push(TUTOR_EMAIL);
+      if (tutorEmail && !recipients.includes(tutorEmail)) {
+        recipients.push(tutorEmail);
       }
 
       const studentName = session.studentEmail.split("@")[0];

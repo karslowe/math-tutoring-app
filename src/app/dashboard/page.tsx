@@ -14,6 +14,7 @@ interface Booking {
   scheduledAt: string;
   subject: string;
   status: string;
+  meetingRoomUrl?: string;
 }
 
 interface CompletedNote {
@@ -58,7 +59,6 @@ export default function DashboardPage() {
   const [loadingNotes, setLoadingNotes] = useState(true);
 
   const isStudent = !user?.groups?.includes("tutors");
-  const zoomLink = process.env.NEXT_PUBLIC_ZOOM_LINK || "";
 
   const fetchBookings = useCallback(async () => {
     if (!isStudent) return;
@@ -362,9 +362,9 @@ export default function DashboardPage() {
                     {format(new Date(todaySession.scheduledAt), "h:mm a")}
                     {todaySession.subject ? ` · ${todaySession.subject}` : ""}
                   </p>
-                  {zoomLink ? (
+                  {todaySession.meetingRoomUrl ? (
                     <a
-                      href={zoomLink}
+                      href={todaySession.meetingRoomUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-block bg-primary-600 hover:bg-primary-700 hover:shadow-md text-white px-6 py-2.5 rounded-full font-medium text-sm transition-all"

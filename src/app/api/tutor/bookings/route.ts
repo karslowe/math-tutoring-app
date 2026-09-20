@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken, isTutor } from "@/lib/auth-helpers";
+import { requireTutor, listTutors } from "@/lib/auth-helpers";
 import { getScheduledSessionsByDateRange } from "@/lib/dynamodb";
-import { jwtDecode } from "jwt-decode";
 import {
   CognitoIdentityProviderClient,
   ListUsersCommand,
@@ -12,45 +11,11 @@ const cognitoClient = new CognitoIdentityProviderClient({
   region: awsConfig.region,
 });
 
-interface IdTokenPayload {
-  sub: string;
-  email: string;
-  "cognito:groups"?: string[];
-}
-
-// GET - Tutor views all booked sessions in a date range
+// GET - Tutor views all booked sessions (across both tutors, per ADR-0007) in a date range
 export async function GET(request: NextRequest) {
-  const idToken = request.headers.get("x-id-token");
-  const accessToken = extractToken(request.headers.get("authorization"));
-
-  if (!accessToken) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const user = await verifyToken(accessToken);
-  if (!user) {
-    return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-  }
-
-  // Verify tutor access
-  let hasTutorAccess = false;
-  if (idToken) {
-    try {
-      const decoded = jwtDecode<IdTokenPayload>(idToken);
-      const groups = decoded["cognito:groups"] || [];
-      hasTutorAccess = isTutor(groups);
-    } catch {
-      hasTutorAccess = false;
-    }
-  } else {
-    hasTutorAccess = user.email === process.env.TUTOR_EMAIL;
-  }
-
-  if (!hasTutorAccess) {
-    return NextResponse.json(
-      { error: "Tutor access required" },
-      { status: 403 }
-    );
+  const auth = await requireTutor(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   const startDate = request.nextUrl.searchParams.get("startDate");
@@ -64,7 +29,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [sessions, usersResponse] = await Promise.all([
+    const [sessions, usersResponse, tutors] = await Promise.all([
       getScheduledSessionsByDateRange(
         startDate + "T00:00:00.000Z",
         endDate + "T23:59:59.999Z"
@@ -75,6 +40,7 @@ export async function GET(request: NextRequest) {
           Limit: 60,
         })
       ),
+      listTutors(),
     ]);
 
     // Build a map of sub → name
@@ -85,11 +51,15 @@ export async function GET(request: NextRequest) {
       const name = attrs.find((a) => a.Name === "name")?.Value || "";
       if (sub && name) nameMap.set(sub, name);
     }
+    const tutorNameMap = new Map(
+      tutors.map((t) => [t.sub, t.name || t.email])
+    );
 
-    // Enrich sessions with student names
+    // Enrich sessions with student and tutor names
     const enrichedSessions = sessions.map((session) => ({
       ...session,
       studentName: nameMap.get(session.studentSub) || "",
+      tutorName: tutorNameMap.get(session.tutorSub) || "",
     }));
 
     return NextResponse.json({ sessions: enrichedSessions });

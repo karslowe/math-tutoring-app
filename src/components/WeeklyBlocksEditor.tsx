@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, addDays } from "date-fns";
+import TimeRangeInput from "./TimeRangeInput";
+import { withTutorSub } from "@/lib/tutor-query";
 
 interface TimeRange {
   start: string;
@@ -18,6 +20,9 @@ interface DayBlocks {
 interface WeeklyBlocksEditorProps {
   getToken: () => Promise<string | null>;
   getIdToken: () => Promise<string | null>;
+  // Under the shared-login model (ADR-0009), which tutor's blocks this edits.
+  // Omit to act as the caller's own account.
+  actingAsTutorSub?: string;
 }
 
 const DAY_NAMES = [
@@ -33,6 +38,7 @@ const DAY_NAMES = [
 export default function WeeklyBlocksEditor({
   getToken,
   getIdToken,
+  actingAsTutorSub,
 }: WeeklyBlocksEditorProps) {
   const [days, setDays] = useState<DayBlocks[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,11 +64,14 @@ export default function WeeklyBlocksEditor({
       const endStr = format(nextTwoWeeks[13], "yyyy-MM-dd");
 
       const [weeklyRes, overridesRes] = await Promise.all([
-        fetch("/api/availability", {
+        fetch(withTutorSub("/api/availability", actingAsTutorSub), {
           headers: { Authorization: `Bearer ${token}` },
         }),
         fetch(
-          `/api/availability/overrides?startDate=${startStr}&endDate=${endStr}`,
+          withTutorSub(
+            `/api/availability/overrides?startDate=${startStr}&endDate=${endStr}`,
+            actingAsTutorSub
+          ),
           { headers: { Authorization: `Bearer ${token}` } }
         ),
       ]);
@@ -97,7 +106,7 @@ export default function WeeklyBlocksEditor({
     } finally {
       setLoading(false);
     }
-  }, [getToken]);
+  }, [getToken, actingAsTutorSub]);
 
   useEffect(() => {
     load();
@@ -164,7 +173,7 @@ export default function WeeklyBlocksEditor({
       const token = await getToken();
       const idToken = await getIdToken();
 
-      const res = await fetch("/api/availability/overrides", {
+      const res = await fetch(withTutorSub("/api/availability/overrides", actingAsTutorSub), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -193,13 +202,16 @@ export default function WeeklyBlocksEditor({
       const token = await getToken();
       const idToken = await getIdToken();
 
-      await fetch(`/api/availability/overrides?date=${day.date}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          ...(idToken ? { "x-id-token": idToken } : {}),
-        },
-      });
+      await fetch(
+        withTutorSub(`/api/availability/overrides?date=${day.date}`, actingAsTutorSub),
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...(idToken ? { "x-id-token": idToken } : {}),
+          },
+        }
+      );
 
       setDays((prev) => {
         const updated = [...prev];
@@ -217,27 +229,27 @@ export default function WeeklyBlocksEditor({
 
   if (loading) {
     return (
-      <div className="space-y-3">
-        {[...Array(7)].map((_, i) => (
-          <div key={i} className="animate-pulse bg-gray-100 rounded-xl h-24" />
+      <div className="space-y-2">
+        {[...Array(14)].map((_, i) => (
+          <div key={i} className="animate-pulse bg-gray-100 rounded-lg h-10" />
         ))}
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
         <p className="text-sm text-amber-800">
-          <strong>Heads up:</strong> All blocks reset every other Thursday at
-          9am PT. You&apos;ll get an email reminder to re-block for the upcoming
+          <strong>Heads up:</strong> All blocks reset every other Sunday at
+          10am PT. You&apos;ll get an email reminder to re-block for the upcoming
           2 weeks.
         </p>
       </div>
 
       {message && (
         <div
-          className={`p-3 rounded-lg text-sm ${
+          className={`p-2 rounded-lg text-sm ${
             message.type === "success"
               ? "bg-green-50 text-green-700 border border-green-200"
               : "bg-red-50 text-red-700 border border-red-200"
@@ -247,115 +259,89 @@ export default function WeeklyBlocksEditor({
         </div>
       )}
 
-      {days.map((day, dayIndex) => (
-        <div
-          key={day.date}
-          className="bg-white rounded-xl shadow-sm border border-gray-200 p-4"
-        >
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h3 className="font-semibold text-gray-900">{day.label}</h3>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Base hours:{" "}
-                {day.baseSlots.length === 0
-                  ? "off"
-                  : day.baseSlots
-                      .map((s) => `${s.start}–${s.end}`)
-                      .join(", ")}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => addBlock(dayIndex)}
-                disabled={day.baseSlots.length === 0}
-                className="text-xs text-blue-600 hover:text-blue-700 font-medium disabled:text-gray-300 disabled:cursor-not-allowed"
-              >
-                + Block range
-              </button>
-              <button
-                onClick={() => blockEntireDay(dayIndex)}
-                disabled={day.baseSlots.length === 0}
-                className="text-xs text-red-600 hover:text-red-700 font-medium disabled:text-gray-300 disabled:cursor-not-allowed"
-              >
-                Block all day
-              </button>
-              {day.blockedRanges.length > 0 && (
-                <button
-                  onClick={() => clearDay(dayIndex)}
-                  disabled={savingDate === day.date}
-                  className="text-xs text-gray-500 hover:text-gray-700 font-medium"
-                >
-                  Clear
-                </button>
-              )}
-              <button
-                onClick={() => saveDay(dayIndex)}
-                disabled={savingDate === day.date}
-                className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-              >
-                {savingDate === day.date ? "Saving..." : "Save"}
-              </button>
-            </div>
-          </div>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 divide-y divide-gray-100">
+        {days.map((day, dayIndex) => (
+          <div key={day.date} className="p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="w-28 shrink-0 pt-1">
+                <h3 className="font-semibold text-gray-900 text-sm">{day.label}</h3>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  {day.baseSlots.length === 0
+                    ? "Off"
+                    : day.baseSlots.map((s) => `${s.start}–${s.end}`).join(", ")}
+                </p>
+              </div>
 
-          {day.blockedRanges.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">No blocks</p>
-          ) : (
-            <div className="space-y-2">
-              {day.blockedRanges.map((range, blockIndex) => (
-                <div
-                  key={blockIndex}
-                  className="flex items-center gap-2 text-sm bg-red-50 border border-red-100 rounded-lg px-3 py-2"
-                >
-                  <span className="text-red-700 font-medium text-xs">
-                    BLOCKED
-                  </span>
-                  <input
-                    type="time"
-                    value={range.start}
-                    onChange={(e) =>
-                      updateBlock(
-                        dayIndex,
-                        blockIndex,
-                        "start",
-                        e.target.value
-                      )
-                    }
-                    className="border border-gray-300 rounded-lg px-2 py-1 text-gray-900 focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                  />
-                  <span className="text-gray-500">to</span>
-                  <input
-                    type="time"
-                    value={range.end}
-                    onChange={(e) =>
-                      updateBlock(dayIndex, blockIndex, "end", e.target.value)
-                    }
-                    className="border border-gray-300 rounded-lg px-2 py-1 text-gray-900 focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                  />
+              <div className="flex-1 min-w-0">
+                {day.blockedRanges.length === 0 ? (
+                  <p className="text-sm text-gray-400 italic py-1">No blocks</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {day.blockedRanges.map((range, blockIndex) => (
+                      <div
+                        key={blockIndex}
+                        className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-lg px-2 py-1.5"
+                      >
+                        <span className="text-red-700 font-medium text-[11px]">BLOCKED</span>
+                        <TimeRangeInput
+                          start={range.start}
+                          end={range.end}
+                          onChangeStart={(v) => updateBlock(dayIndex, blockIndex, "start", v)}
+                          onChangeEnd={(v) => updateBlock(dayIndex, blockIndex, "end", v)}
+                        />
+                        <button
+                          onClick={() => removeBlock(dayIndex, blockIndex)}
+                          className="text-red-500 hover:text-red-700 p-1 ml-auto"
+                          aria-label="Remove block"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={() => removeBlock(dayIndex, blockIndex)}
-                    className="text-red-500 hover:text-red-700 p-1 ml-auto"
+                    onClick={() => addBlock(dayIndex)}
+                    disabled={day.baseSlots.length === 0}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-medium disabled:text-gray-300 disabled:cursor-not-allowed whitespace-nowrap"
                   >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
+                    + Block range
+                  </button>
+                  <button
+                    onClick={() => blockEntireDay(dayIndex)}
+                    disabled={day.baseSlots.length === 0}
+                    className="text-xs text-red-600 hover:text-red-700 font-medium disabled:text-gray-300 disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    Block all day
                   </button>
                 </div>
-              ))}
+                <div className="flex items-center gap-2">
+                  {day.blockedRanges.length > 0 && (
+                    <button
+                      onClick={() => clearDay(dayIndex)}
+                      disabled={savingDate === day.date}
+                      className="text-xs text-gray-500 hover:text-gray-700 font-medium"
+                    >
+                      Clear
+                    </button>
+                  )}
+                  <button
+                    onClick={() => saveDay(dayIndex)}
+                    disabled={savingDate === day.date}
+                    className="text-xs bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  >
+                    {savingDate === day.date ? "Saving..." : "Save"}
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
-      ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

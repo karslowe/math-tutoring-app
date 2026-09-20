@@ -9,7 +9,9 @@ const sesClient = new SESClient({
 
 const TUTOR_TIMEZONE =
   process.env.TUTOR_TIMEZONE || "America/Los_Angeles";
-const ZOOM_LINK = process.env.NEXT_PUBLIC_ZOOM_LINK || "";
+// Fallback only for the founding tutor's pre-migration room; every session
+// created after the two-tutor migration carries its own tutor's meetingRoomUrl.
+const DEFAULT_ZOOM_LINK = process.env.NEXT_PUBLIC_ZOOM_LINK || "";
 
 function formatEmailDate(isoDate: string): string {
   return formatInTimeZone(
@@ -106,11 +108,13 @@ export async function sendBookingConfirmationEmail({
   studentName,
   scheduledAt,
   subject,
+  meetingRoomUrl,
 }: {
   to: string[];
   studentName: string;
   scheduledAt: string;
   subject: string;
+  meetingRoomUrl?: string;
 }): Promise<void> {
   const fromEmail = awsConfig.ses.fromEmail;
   if (!fromEmail) return;
@@ -118,6 +122,7 @@ export async function sendBookingConfirmationEmail({
   const validRecipients = to.filter((email) => email && email.includes("@"));
   if (validRecipients.length === 0) return;
 
+  const ZOOM_LINK = meetingRoomUrl || DEFAULT_ZOOM_LINK;
   const dateStr = formatEmailDate(scheduledAt);
   const timeStr = formatEmailTime(scheduledAt);
 

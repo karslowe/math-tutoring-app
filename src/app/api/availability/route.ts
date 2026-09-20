@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken, isTutor } from "@/lib/auth-helpers";
+import {
+  extractToken,
+  verifyToken,
+  requireTutor,
+  resolveActingTutorSub,
+} from "@/lib/auth-helpers";
 import { getWeeklyAvailability, setWeeklyAvailability } from "@/lib/dynamodb";
-import { jwtDecode } from "jwt-decode";
 
-interface IdTokenPayload {
-  sub: string;
-  email: string;
-  "cognito:groups"?: string[];
-}
-
-// GET - Any authenticated user can view weekly availability
+// GET - Any authenticated user can view a tutor's weekly availability.
+// Tutors default to their own; anyone else must pass ?tutorSub=.
 export async function GET(request: NextRequest) {
   const accessToken = extractToken(request.headers.get("authorization"));
   if (!accessToken) {
@@ -21,8 +20,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
   }
 
+  const tutorSub = request.nextUrl.searchParams.get("tutorSub") || user.sub;
+
   try {
-    const availability = await getWeeklyAvailability();
+    const availability = await getWeeklyAvailability(tutorSub);
     return NextResponse.json({ availability });
   } catch (error: any) {
     console.error("Get availability error:", error);
@@ -33,42 +34,22 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PUT - Tutor sets weekly availability for a day
+// PUT - Tutor sets weekly availability for a day, for themself or (under the
+// shared-login model, ADR-0009) for the second tutor they're acting as via
+// ?tutorSub=. resolveActingTutorSub rejects any sub that isn't one of those two.
 export async function PUT(request: NextRequest) {
-  const idToken = request.headers.get("x-id-token");
-  const accessToken = extractToken(request.headers.get("authorization"));
-
-  if (!accessToken) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireTutor(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
+  const { user } = auth;
 
-  const user = await verifyToken(accessToken);
-  if (!user) {
-    return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-  }
-
-  // Verify tutor access
-  if (idToken) {
-    try {
-      const decoded = jwtDecode<IdTokenPayload>(idToken);
-      const groups = decoded["cognito:groups"] || [];
-      if (!isTutor(groups)) {
-        return NextResponse.json(
-          { error: "Tutor access required" },
-          { status: 403 }
-        );
-      }
-    } catch {
-      return NextResponse.json(
-        { error: "Tutor access required" },
-        { status: 403 }
-      );
-    }
-  } else if (user.email !== process.env.TUTOR_EMAIL) {
-    return NextResponse.json(
-      { error: "Tutor access required" },
-      { status: 403 }
-    );
+  const acting = resolveActingTutorSub(
+    user.sub,
+    request.nextUrl.searchParams.get("tutorSub")
+  );
+  if (!acting.ok) {
+    return NextResponse.json({ error: acting.error }, { status: acting.status });
   }
 
   try {
@@ -98,7 +79,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    await setWeeklyAvailability(dayOfWeek.toLowerCase(), slots);
+    await setWeeklyAvailability(acting.tutorSub, dayOfWeek.toLowerCase(), slots);
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("Set availability error:", error);

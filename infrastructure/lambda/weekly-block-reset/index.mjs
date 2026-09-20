@@ -13,12 +13,16 @@ const sesClient = new SESClient({});
 const AVAILABILITY_TABLE =
   process.env.AVAILABILITY_TABLE || "math-tutoring-availability";
 const FROM_EMAIL = process.env.FROM_EMAIL || "";
-const TUTOR_EMAIL = process.env.TUTOR_EMAIL || "";
+// Comma-separated — every tutor gets the reminder to re-block, not just one.
+const TUTOR_EMAILS = (process.env.TUTOR_EMAILS || process.env.TUTOR_EMAIL || "")
+  .split(",")
+  .map((e) => e.trim())
+  .filter(Boolean);
 const TUTOR_TIMEZONE = process.env.TUTOR_TIMEZONE || "America/Los_Angeles";
 
-// Anchor for the bi-weekly cadence: the first Thursday on which the reset should run.
-// Every 14 days from this date is a reset Thursday; the Thursdays in between are skipped.
-const BIWEEKLY_ANCHOR_UTC_MS = Date.UTC(2026, 5, 4); // 2026-06-04
+// Anchor for the bi-weekly cadence: the first Sunday on which the reset should run.
+// Every 14 days from this date is a reset Sunday; the Sundays in between are skipped.
+const BIWEEKLY_ANCHOR_UTC_MS = Date.UTC(2026, 5, 7); // 2026-06-07
 
 function isResetWeek(now) {
   const daysSinceAnchor = Math.floor(
@@ -28,15 +32,15 @@ function isResetWeek(now) {
 }
 
 /**
- * Triggered by EventBridge every Thursday at 9am tutor time. Runs the reset only
- * on alternating Thursdays (bi-weekly). Deletes all OVERRIDE# entries in the
+ * Triggered by EventBridge every Sunday at 10am tutor time. Runs the reset only
+ * on alternating Sundays (bi-weekly). Deletes all OVERRIDE# entries in the
  * availability table, then emails the tutor to re-block for the upcoming 2 weeks.
  */
 export async function handler() {
   try {
     const now = new Date();
     if (!isResetWeek(now)) {
-      console.log("Off-week Thursday — skipping bi-weekly reset.");
+      console.log("Off-week Sunday — skipping bi-weekly reset.");
       return { statusCode: 200, body: "Skipped (off-week)" };
     }
 
@@ -60,7 +64,7 @@ export async function handler() {
       );
     }
 
-    if (FROM_EMAIL && TUTOR_EMAIL) {
+    if (FROM_EMAIL && TUTOR_EMAILS.length > 0) {
       const rangeEnd = new Date(now.getTime() + 13 * 24 * 60 * 60 * 1000);
       const rangeStr = `${now.toLocaleDateString("en-US", {
         month: "short",
@@ -75,7 +79,7 @@ export async function handler() {
       await sesClient.send(
         new SendEmailCommand({
           Source: FROM_EMAIL,
-          Destination: { ToAddresses: [TUTOR_EMAIL] },
+          Destination: { ToAddresses: TUTOR_EMAILS },
           Message: {
             Subject: {
               Data: `Weekly blocks cleared — set blocks for ${rangeStr}`,

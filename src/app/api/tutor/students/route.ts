@@ -1,17 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken, isTutor } from "@/lib/auth-helpers";
-import { jwtDecode } from "jwt-decode";
+import { requireTutor } from "@/lib/auth-helpers";
 import {
   CognitoIdentityProviderClient,
   ListUsersCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { awsConfig } from "@/lib/aws-config";
-
-interface IdTokenPayload {
-  sub: string;
-  email: string;
-  "cognito:groups"?: string[];
-}
 
 const cognitoClient = new CognitoIdentityProviderClient({
   region: awsConfig.region,
@@ -19,35 +12,11 @@ const cognitoClient = new CognitoIdentityProviderClient({
 });
 
 export async function GET(request: NextRequest) {
-  const idToken = request.headers.get("x-id-token");
-  const accessToken = extractToken(request.headers.get("authorization"));
-
-  if (!accessToken) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireTutor(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
-
-  const user = await verifyToken(accessToken);
-  if (!user) {
-    return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-  }
-
-  // Check tutor role
-  if (idToken) {
-    try {
-      const decoded = jwtDecode<IdTokenPayload>(idToken);
-      const groups = decoded["cognito:groups"] || [];
-      if (!isTutor(groups)) {
-        return NextResponse.json({ error: "Tutor access required" }, { status: 403 });
-      }
-    } catch {
-      return NextResponse.json({ error: "Invalid ID token" }, { status: 401 });
-    }
-  } else {
-    const tutorEmail = process.env.TUTOR_EMAIL;
-    if (user.email !== tutorEmail) {
-      return NextResponse.json({ error: "Tutor access required" }, { status: 403 });
-    }
-  }
+  const { user } = auth;
 
   try {
     const response = await cognitoClient.send(

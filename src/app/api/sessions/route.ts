@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken, getHouseholdSub } from "@/lib/auth-helpers";
+import { extractToken, verifyToken, getHouseholdSub, listTutors } from "@/lib/auth-helpers";
 import {
   createSession,
   getSessionsByStudent,
+  getMostRecentTutorForStudent,
   TutoringSession,
 } from "@/lib/dynamodb";
 import { randomUUID } from "crypto";
@@ -46,10 +47,18 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const householdSub = await getHouseholdSub(user.sub);
 
+    // NOTE: this endpoint has no frontend caller and bypasses the slot-lock
+    // and pooled-assignment logic that /api/bookings uses — it should not be
+    // wired up to any UI without going through that same path instead.
+    const tutors = await listTutors();
+    const tutorSub =
+      (await getMostRecentTutorForStudent(householdSub)) || tutors[0]?.sub || "";
+
     const session: TutoringSession = {
       id: randomUUID(),
       studentSub: householdSub,
       studentEmail: user.email,
+      tutorSub,
       scheduledAt: body.scheduledAt,
       duration: body.duration || 60,
       subject: body.subject || "General Math",

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken, isTutor } from "@/lib/auth-helpers";
+import { requireTutor, resolveActingTutorSub, listTutors } from "@/lib/auth-helpers";
 import {
   createSession,
+  completeSessionWithNotes,
+  getSession,
   getSessionsByStudent,
   getUserProfile,
   getReferralByInvitedEmail,
@@ -10,55 +12,24 @@ import {
   TutoringSession,
 } from "@/lib/dynamodb";
 import { sendSessionNoteEmail, sendReferralCreditEmail } from "@/lib/ses";
-import { jwtDecode } from "jwt-decode";
 import { randomUUID } from "crypto";
 
-interface IdTokenPayload {
-  sub: string;
-  email: string;
-  "cognito:groups"?: string[];
-}
-
-function verifyTutorAccess(
-  idToken: string | null,
-  userEmail: string
-): boolean {
-  if (idToken) {
-    try {
-      const decoded = jwtDecode<IdTokenPayload>(idToken);
-      const groups = decoded["cognito:groups"] || [];
-      return isTutor(groups);
-    } catch {
-      return false;
-    }
-  }
-  return userEmail === process.env.TUTOR_EMAIL;
-}
-
-// POST - Tutor creates a session note for a student
+// POST - Adds notes to a student's session. If `sessionId` names an existing
+// scheduled booking, notes attach to it and tutor-history attribution comes
+// from that booking's own assignment (chooseTutor already decided it, per
+// ADR-0009) — the caller's identity is irrelevant here. Only a note with no
+// underlying booking (a walk-in/make-up lesson) creates a new session, and
+// only then does it matter who's acting via ?tutorSub=.
 export async function POST(request: NextRequest) {
-  const idToken = request.headers.get("x-id-token");
-  const accessToken = extractToken(request.headers.get("authorization"));
-
-  if (!accessToken) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireTutor(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
-
-  const user = await verifyToken(accessToken);
-  if (!user) {
-    return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-  }
-
-  if (!verifyTutorAccess(idToken, user.email)) {
-    return NextResponse.json(
-      { error: "Tutor access required" },
-      { status: 403 }
-    );
-  }
+  const { user } = auth;
 
   try {
     const body = await request.json();
-    const { studentSub, studentEmail, subject, notes, topics } = body;
+    const { studentSub, studentEmail, subject, notes, topics, sessionId } = body;
 
     if (!studentSub || !notes) {
       return NextResponse.json(
@@ -67,21 +38,75 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const session: TutoringSession = {
-      id: randomUUID(),
-      studentSub,
-      studentEmail: studentEmail || "",
-      scheduledAt: new Date().toISOString(),
-      duration: 60,
-      subject: subject || "General Math",
-      notes,
-      topics: topics || [],
-      status: "completed",
-      reminderSent: false,
-      createdAt: new Date().toISOString(),
-    };
+    let session: TutoringSession;
 
-    await createSession(session);
+    if (sessionId) {
+      const existing = await getSession(sessionId);
+      if (!existing || existing.studentSub !== studentSub) {
+        return NextResponse.json(
+          { error: "Session not found for this student" },
+          { status: 404 }
+        );
+      }
+      if (existing.status !== "scheduled") {
+        return NextResponse.json(
+          { error: "This session has already been logged" },
+          { status: 409 }
+        );
+      }
+
+      const resolvedSubject = subject || existing.subject;
+      const resolvedTopics = topics || [];
+      try {
+        await completeSessionWithNotes(sessionId, {
+          subject: resolvedSubject,
+          notes,
+          topics: resolvedTopics,
+        });
+      } catch (err: any) {
+        const alreadyLogged =
+          err.name === "ConditionalCheckFailedException" ||
+          err.__type?.includes("ConditionalCheckFailedException");
+        if (alreadyLogged) {
+          return NextResponse.json(
+            { error: "This session has already been logged" },
+            { status: 409 }
+          );
+        }
+        throw err;
+      }
+      session = {
+        ...existing,
+        subject: resolvedSubject,
+        notes,
+        topics: resolvedTopics,
+        status: "completed",
+      };
+    } else {
+      const acting = resolveActingTutorSub(
+        user.sub,
+        request.nextUrl.searchParams.get("tutorSub")
+      );
+      if (!acting.ok) {
+        return NextResponse.json({ error: acting.error }, { status: acting.status });
+      }
+
+      session = {
+        id: randomUUID(),
+        studentSub,
+        studentEmail: studentEmail || "",
+        tutorSub: acting.tutorSub,
+        scheduledAt: new Date().toISOString(),
+        duration: 60,
+        subject: subject || "General Math",
+        notes,
+        topics: topics || [],
+        status: "completed",
+        reminderSent: false,
+        createdAt: new Date().toISOString(),
+      };
+      await createSession(session);
+    }
 
     // Send email notification to student (and parent if set)
     try {
@@ -156,25 +181,13 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET - Tutor views session notes for a specific student
+// GET - Tutor views session notes and scheduled bookings for a specific
+// student, the latter enriched with tutorName so the "which session is this
+// for?" picker can show who a booking was already assigned to.
 export async function GET(request: NextRequest) {
-  const idToken = request.headers.get("x-id-token");
-  const accessToken = extractToken(request.headers.get("authorization"));
-
-  if (!accessToken) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const user = await verifyToken(accessToken);
-  if (!user) {
-    return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-  }
-
-  if (!verifyTutorAccess(idToken, user.email)) {
-    return NextResponse.json(
-      { error: "Tutor access required" },
-      { status: 403 }
-    );
+  const auth = await requireTutor(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   const studentSub = request.nextUrl.searchParams.get("studentSub");
@@ -186,8 +199,16 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const sessions = await getSessionsByStudent(studentSub);
-    return NextResponse.json({ sessions });
+    const [sessions, tutors] = await Promise.all([
+      getSessionsByStudent(studentSub),
+      listTutors(),
+    ]);
+    const tutorNameMap = new Map(tutors.map((t) => [t.sub, t.name || t.email]));
+    const enriched = sessions.map((s) => ({
+      ...s,
+      tutorName: tutorNameMap.get(s.tutorSub) || "",
+    }));
+    return NextResponse.json({ sessions: enriched });
   } catch (error: any) {
     console.error("Get session notes error:", error);
     return NextResponse.json(

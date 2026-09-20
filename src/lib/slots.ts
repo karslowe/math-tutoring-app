@@ -152,3 +152,46 @@ export function filterPastSlots(slots: string[]): string[] {
   const now = new Date();
   return slots.filter((slot) => isBefore(now, new Date(slot)));
 }
+
+export interface BusyInterval {
+  start: string; // ISO UTC
+  end: string; // ISO UTC
+}
+
+/**
+ * Convert UTC busy intervals (e.g. from a Google freebusy check) into
+ * tutor-local HH:MM blocked ranges for one date, expanded by a buffer on
+ * each side, and subtract them from the base windows — the same shape and
+ * treatment as a Date Override's blockedRanges.
+ */
+export function subtractBusyIntervals(
+  windows: AvailabilitySlot[],
+  dateStr: string,
+  busy: BusyInterval[],
+  timezone: string = DEFAULT_TIMEZONE,
+  bufferMinutes: number = 0
+): AvailabilitySlot[] {
+  if (busy.length === 0) return windows;
+
+  const dayStart = fromZonedTime(`${dateStr}T00:00:00`, timezone);
+  const dayEnd = fromZonedTime(`${dateStr}T23:59:59.999`, timezone);
+
+  const blocked: AvailabilitySlot[] = [];
+  for (const b of busy) {
+    const start = addMinutes(new Date(b.start), -bufferMinutes);
+    const end = addMinutes(new Date(b.end), bufferMinutes);
+    if (end <= dayStart || start >= dayEnd) continue; // doesn't touch this date
+
+    const clampedStart = start < dayStart ? dayStart : start;
+    const clampedEnd = end > dayEnd ? dayEnd : end;
+
+    const zonedStart = toZonedTime(clampedStart, timezone);
+    const zonedEnd = toZonedTime(clampedEnd, timezone);
+    blocked.push({
+      start: toHHMM(zonedStart.getHours() * 60 + zonedStart.getMinutes()),
+      end: toHHMM(zonedEnd.getHours() * 60 + zonedEnd.getMinutes()),
+    });
+  }
+
+  return subtractBlockedRanges(windows, blocked);
+}

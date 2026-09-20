@@ -1,35 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken, isTutor } from "@/lib/auth-helpers";
+import {
+  extractToken,
+  verifyToken,
+  requireTutor,
+  resolveActingTutorSub,
+} from "@/lib/auth-helpers";
 import {
   getDateOverrides,
   setDateOverride,
   deleteDateOverride,
 } from "@/lib/dynamodb";
-import { jwtDecode } from "jwt-decode";
 
-interface IdTokenPayload {
-  sub: string;
-  email: string;
-  "cognito:groups"?: string[];
-}
-
-function verifyTutorAccess(
-  idToken: string | null,
-  userEmail: string
-): boolean {
-  if (idToken) {
-    try {
-      const decoded = jwtDecode<IdTokenPayload>(idToken);
-      const groups = decoded["cognito:groups"] || [];
-      return isTutor(groups);
-    } catch {
-      return false;
-    }
-  }
-  return userEmail === process.env.TUTOR_EMAIL;
-}
-
-// GET - Any authenticated user can view date overrides
+// GET - Any authenticated user can view a tutor's date overrides.
+// Tutors default to their own; anyone else must pass ?tutorSub=.
 export async function GET(request: NextRequest) {
   const accessToken = extractToken(request.headers.get("authorization"));
   if (!accessToken) {
@@ -41,6 +24,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
   }
 
+  const tutorSub = request.nextUrl.searchParams.get("tutorSub") || user.sub;
   const startDate = request.nextUrl.searchParams.get("startDate");
   const endDate = request.nextUrl.searchParams.get("endDate");
 
@@ -52,7 +36,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const overrides = await getDateOverrides(startDate, endDate);
+    const overrides = await getDateOverrides(tutorSub, startDate, endDate);
     return NextResponse.json({ overrides });
   } catch (error: any) {
     console.error("Get overrides error:", error);
@@ -63,25 +47,21 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Tutor creates a date override
+// POST - Tutor creates a date override, for themself or (under the
+// shared-login model, ADR-0009) for the second tutor via ?tutorSub=.
 export async function POST(request: NextRequest) {
-  const idToken = request.headers.get("x-id-token");
-  const accessToken = extractToken(request.headers.get("authorization"));
-
-  if (!accessToken) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireTutor(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
+  const { user } = auth;
 
-  const user = await verifyToken(accessToken);
-  if (!user) {
-    return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-  }
-
-  if (!verifyTutorAccess(idToken, user.email)) {
-    return NextResponse.json(
-      { error: "Tutor access required" },
-      { status: 403 }
-    );
+  const acting = resolveActingTutorSub(
+    user.sub,
+    request.nextUrl.searchParams.get("tutorSub")
+  );
+  if (!acting.ok) {
+    return NextResponse.json({ error: acting.error }, { status: acting.status });
   }
 
   try {
@@ -95,7 +75,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await setDateOverride(date, blockedRanges);
+    await setDateOverride(acting.tutorSub, date, blockedRanges);
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("Set override error:", error);
@@ -106,25 +86,21 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE - Tutor removes a date override
+// DELETE - Tutor removes a date override, for themself or (under the
+// shared-login model, ADR-0009) for the second tutor via ?tutorSub=.
 export async function DELETE(request: NextRequest) {
-  const idToken = request.headers.get("x-id-token");
-  const accessToken = extractToken(request.headers.get("authorization"));
-
-  if (!accessToken) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireTutor(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
+  const { user } = auth;
 
-  const user = await verifyToken(accessToken);
-  if (!user) {
-    return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-  }
-
-  if (!verifyTutorAccess(idToken, user.email)) {
-    return NextResponse.json(
-      { error: "Tutor access required" },
-      { status: 403 }
-    );
+  const acting = resolveActingTutorSub(
+    user.sub,
+    request.nextUrl.searchParams.get("tutorSub")
+  );
+  if (!acting.ok) {
+    return NextResponse.json({ error: acting.error }, { status: acting.status });
   }
 
   const date = request.nextUrl.searchParams.get("date");
@@ -136,7 +112,7 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    await deleteDateOverride(date);
+    await deleteDateOverride(acting.tutorSub, date);
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("Delete override error:", error);

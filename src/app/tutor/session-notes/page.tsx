@@ -5,6 +5,15 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import ProgressChart, { TopicTag } from "@/components/ProgressChart";
 import Link from "next/link";
+import { withTutorSub } from "@/lib/tutor-query";
+
+// ADR-0009: only used for a note with no underlying booking (a walk-in or
+// make-up lesson) — a note tied to an existing booking is always attributed
+// to whichever tutor that booking was actually assigned to, regardless of
+// who's logged in when the note gets written.
+const SECOND_TUTOR_SUB = process.env.NEXT_PUBLIC_SECOND_TUTOR_SUB || "";
+const SECOND_TUTOR_NAME = process.env.NEXT_PUBLIC_SECOND_TUTOR_NAME || "Second Tutor";
+const FOUNDER_NAME = process.env.NEXT_PUBLIC_FOUNDER_NAME || "Karsten";
 
 interface Student {
   sub: string;
@@ -28,6 +37,7 @@ interface SessionNote {
   topics?: TopicMastery[];
   status: string;
   createdAt: string;
+  tutorName?: string;
 }
 
 interface TopicProgressEntry {
@@ -72,6 +82,8 @@ export default function TutorSessionNotesPage() {
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [subject, setSubject] = useState("");
   const [notes, setNotes] = useState("");
+  const [selectedSessionId, setSelectedSessionId] = useState("");
+  const [actingAsSecond, setActingAsSecond] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -217,7 +229,11 @@ export default function TutorSessionNotesPage() {
         (s) => s.sub === selectedStudent
       );
 
-      const res = await fetch("/api/tutor/session-notes", {
+      const url = selectedSessionId
+        ? "/api/tutor/session-notes"
+        : withTutorSub("/api/tutor/session-notes", actingAsSecond ? SECOND_TUTOR_SUB : undefined);
+
+      const res = await fetch(url, {
         method: "POST",
         headers: {
           ...headers,
@@ -229,6 +245,7 @@ export default function TutorSessionNotesPage() {
           subject: subject.trim() || "General Math",
           notes: notes.trim(),
           topics: topics.length > 0 ? topics : undefined,
+          sessionId: selectedSessionId || undefined,
         }),
       });
 
@@ -241,6 +258,7 @@ export default function TutorSessionNotesPage() {
       setSubject("");
       setNotes("");
       setTopics([]);
+      setSelectedSessionId("");
       fetchSessions(selectedStudent);
       fetchProgress(selectedStudent);
     } catch (err: any) {
@@ -274,6 +292,12 @@ export default function TutorSessionNotesPage() {
   }
 
   const selectedStudentInfo = students.find((s) => s.sub === selectedStudent);
+  // Only actual scheduled bookings can be picked for notes — a completed one
+  // has already been logged, and history should only show what's logged.
+  const scheduledSessions = sessions
+    .filter((s) => s.status === "scheduled")
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+  const historySessions = sessions.filter((s) => s.status === "completed");
 
   return (
     <ProtectedRoute>
@@ -313,6 +337,7 @@ export default function TutorSessionNotesPage() {
               value={selectedStudent}
               onChange={(e) => {
                 setSelectedStudent(e.target.value);
+                setSelectedSessionId("");
                 setSuccess("");
                 setError("");
                 setActiveTab("notes");
@@ -359,6 +384,58 @@ export default function TutorSessionNotesPage() {
                   Add Session Note for {selectedStudentInfo?.name || selectedStudentInfo?.email}
                 </h2>
                 <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Which session is this for?
+                    </label>
+                    <select
+                      value={selectedSessionId}
+                      onChange={(e) => setSelectedSessionId(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                    >
+                      <option value="">Not tied to a specific booking (walk-in / make-up)</option>
+                      {scheduledSessions.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {formatDate(s.scheduledAt)}
+                          {s.tutorName ? ` — ${s.tutorName}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedSessionId ? (
+                      <p className="text-xs text-gray-500 mt-1">
+                        This note attaches to that booking and is credited to whichever
+                        tutor was actually assigned to it.
+                      </p>
+                    ) : (
+                      SECOND_TUTOR_SUB && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-xs text-gray-500">Logged for:</span>
+                          <button
+                            type="button"
+                            onClick={() => setActingAsSecond(false)}
+                            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                              !actingAsSecond
+                                ? "bg-blue-600 text-white"
+                                : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
+                            }`}
+                          >
+                            {FOUNDER_NAME}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActingAsSecond(true)}
+                            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                              actingAsSecond
+                                ? "bg-blue-600 text-white"
+                                : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
+                            }`}
+                          >
+                            {SECOND_TUTOR_NAME}
+                          </button>
+                        </div>
+                      )
+                    )}
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Subject
@@ -484,8 +561,8 @@ export default function TutorSessionNotesPage() {
                     Session History
                   </h2>
                   <span className="text-sm text-gray-500">
-                    {sessions.length} session
-                    {sessions.length !== 1 ? "s" : ""}
+                    {historySessions.length} session
+                    {historySessions.length !== 1 ? "s" : ""}
                   </span>
                 </div>
 
@@ -499,7 +576,7 @@ export default function TutorSessionNotesPage() {
                       </div>
                     ))}
                   </div>
-                ) : sessions.length === 0 ? (
+                ) : historySessions.length === 0 ? (
                   <div className="text-center py-8">
                     <svg
                       className="mx-auto h-10 w-10 text-gray-300 mb-3"
@@ -520,7 +597,7 @@ export default function TutorSessionNotesPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {sessions.map((session) => (
+                    {historySessions.map((session) => (
                       <div
                         key={session.id}
                         className="border-l-4 border-primary-300 pl-4 py-3"
@@ -533,6 +610,11 @@ export default function TutorSessionNotesPage() {
                           <span className="text-xs text-gray-500">
                             {formatDate(session.scheduledAt)}
                           </span>
+                          {session.tutorName && (
+                            <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                              {session.tutorName}
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm text-gray-700 whitespace-pre-wrap">
                           {session.notes}

@@ -24,4 +24,8 @@ export const awsConfig = {
     fromEmail: process.env.SES_FROM_EMAIL || "",
   },
   tutorEmail: process.env.TUTOR_EMAIL || "",
+  google: {
+    secretName: process.env.GOOGLE_CALENDAR_SECRET_NAME || "klmathprep/google-calendar",
+    bufferMinutes: 15,
+  },
 };

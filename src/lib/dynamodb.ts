@@ -39,6 +39,7 @@ export interface TutoringSession {
   id: string;
   studentSub: string;
   studentEmail: string;
+  tutorSub: string;
   scheduledAt: string; // ISO date
   duration: number; // minutes
   subject: string;
@@ -48,6 +49,8 @@ export interface TutoringSession {
   status: "scheduled" | "completed" | "cancelled";
   reminderSent: boolean;
   createdAt: string;
+  googleEventId?: string;
+  googleEventStatus?: "synced" | "failed";
 }
 
 export async function createSession(
@@ -101,6 +104,54 @@ export async function updateSessionStatus(
   );
 }
 
+/**
+ * Attaches session notes to an already-booked, still-scheduled session
+ * instead of creating a second, disconnected record — so tutor-history
+ * attribution comes from whichever tutor the pooled-booking system actually
+ * assigned (`tutorSub`, untouched here), not from whoever happens to be
+ * logged in when the notes get written up afterward. The ConditionExpression
+ * also stops the same booking from being logged twice.
+ */
+export async function completeSessionWithNotes(
+  id: string,
+  updates: { subject: string; notes: string; topics: TopicMastery[] }
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: awsConfig.dynamodb.sessionsTable,
+      Key: { id },
+      UpdateExpression:
+        "SET #status = :completed, subject = :subject, notes = :notes, topics = :topics",
+      ExpressionAttributeNames: { "#status": "status" },
+      ExpressionAttributeValues: {
+        ":completed": "completed",
+        ":scheduled": "scheduled",
+        ":subject": updates.subject,
+        ":notes": updates.notes,
+        ":topics": updates.topics,
+      },
+      ConditionExpression: "#status = :scheduled",
+    })
+  );
+}
+
+export async function updateSessionGoogleEvent(
+  id: string,
+  update: { googleEventId?: string; googleEventStatus: TutoringSession["googleEventStatus"] }
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: awsConfig.dynamodb.sessionsTable,
+      Key: { id },
+      UpdateExpression: "SET googleEventStatus = :status" + (update.googleEventId ? ", googleEventId = :eventId" : ""),
+      ExpressionAttributeValues: {
+        ":status": update.googleEventStatus,
+        ...(update.googleEventId ? { ":eventId": update.googleEventId } : {}),
+      },
+    })
+  );
+}
+
 // ── User profile operations ──
 
 export interface UserProfile {
@@ -118,6 +169,10 @@ export interface UserProfile {
   surveySubject?: string;
   surveyGoal?: string;
   createdAt: string;
+  // Tutor-only fields (role === "tutor"). Populated via /api/tutor/profile.
+  photoUrl?: string;
+  bio?: string;
+  meetingRoomUrl?: string;
 }
 
 export async function upsertUserProfile(
@@ -141,6 +196,37 @@ export async function getUserProfile(
     })
   );
   return (result.Item as UserProfile) || null;
+}
+
+/**
+ * Sets a tutor's meeting room URL (ADR-0004) in a single round trip, rather
+ * than reading the profile back just to spread it into a full overwrite.
+ * `if_not_exists` fills in displayName/createdAt only the first time this
+ * identity gets a profile row at all — including a synthetic second-tutor
+ * sub (ADR-0009) that has no signup flow of its own to have created one.
+ */
+export async function upsertTutorMeetingRoom(
+  sub: string,
+  fields: { email: string; displayName: string; meetingRoomUrl: string }
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: awsConfig.dynamodb.usersTable,
+      Key: { sub },
+      UpdateExpression:
+        "SET email = :email, #role = :role, meetingRoomUrl = :url, " +
+        "createdAt = if_not_exists(createdAt, :now), " +
+        "displayName = if_not_exists(displayName, :displayName)",
+      ExpressionAttributeNames: { "#role": "role" },
+      ExpressionAttributeValues: {
+        ":email": fields.email,
+        ":role": "tutor",
+        ":url": fields.meetingRoomUrl,
+        ":now": new Date().toISOString(),
+        ":displayName": fields.displayName,
+      },
+    })
+  );
 }
 
 export async function updateParentEmail(
@@ -224,20 +310,23 @@ export interface AvailabilitySlot {
 }
 
 export interface WeeklyAvailability {
-  pk: "WEEKLY";
+  pk: string; // WEEKLY#{tutorSub}
   sk: string; // day of week lowercase (monday, tuesday, etc.)
+  tutorSub: string;
   slots: AvailabilitySlot[];
   updatedAt: string;
 }
 
 export interface DateOverride {
-  pk: string; // OVERRIDE#YYYY-MM-DD
+  pk: string; // OVERRIDE#{tutorSub}#YYYY-MM-DD
   sk: string; // YYYY-MM-DD
+  tutorSub: string;
   blockedRanges: AvailabilitySlot[];
   updatedAt: string;
 }
 
 export async function setWeeklyAvailability(
+  tutorSub: string,
   dayOfWeek: string,
   slots: AvailabilitySlot[]
 ): Promise<void> {
@@ -245,8 +334,9 @@ export async function setWeeklyAvailability(
     new PutCommand({
       TableName: awsConfig.dynamodb.availabilityTable,
       Item: {
-        pk: "WEEKLY",
+        pk: `WEEKLY#${tutorSub}`,
         sk: dayOfWeek.toLowerCase(),
+        tutorSub,
         slots,
         updatedAt: new Date().toISOString(),
       },
@@ -254,18 +344,21 @@ export async function setWeeklyAvailability(
   );
 }
 
-export async function getWeeklyAvailability(): Promise<WeeklyAvailability[]> {
+export async function getWeeklyAvailability(
+  tutorSub: string
+): Promise<WeeklyAvailability[]> {
   const result = await docClient.send(
     new QueryCommand({
       TableName: awsConfig.dynamodb.availabilityTable,
       KeyConditionExpression: "pk = :pk",
-      ExpressionAttributeValues: { ":pk": "WEEKLY" },
+      ExpressionAttributeValues: { ":pk": `WEEKLY#${tutorSub}` },
     })
   );
   return (result.Items || []) as WeeklyAvailability[];
 }
 
 export async function setDateOverride(
+  tutorSub: string,
   date: string,
   blockedRanges: AvailabilitySlot[]
 ): Promise<void> {
@@ -273,8 +366,9 @@ export async function setDateOverride(
     new PutCommand({
       TableName: awsConfig.dynamodb.availabilityTable,
       Item: {
-        pk: `OVERRIDE#${date}`,
+        pk: `OVERRIDE#${tutorSub}#${date}`,
         sk: date,
+        tutorSub,
         blockedRanges,
         updatedAt: new Date().toISOString(),
       },
@@ -283,6 +377,7 @@ export async function setDateOverride(
 }
 
 export async function getDateOverrides(
+  tutorSub: string,
   startDate: string,
   endDate: string
 ): Promise<DateOverride[]> {
@@ -293,7 +388,7 @@ export async function getDateOverrides(
       FilterExpression:
         "begins_with(pk, :prefix) AND sk BETWEEN :start AND :end",
       ExpressionAttributeValues: {
-        ":prefix": "OVERRIDE#",
+        ":prefix": `OVERRIDE#${tutorSub}#`,
         ":start": startDate,
         ":end": endDate,
       },
@@ -302,11 +397,14 @@ export async function getDateOverrides(
   return (result.Items || []) as DateOverride[];
 }
 
-export async function deleteDateOverride(date: string): Promise<void> {
+export async function deleteDateOverride(
+  tutorSub: string,
+  date: string
+): Promise<void> {
   await docClient.send(
     new DeleteCommand({
       TableName: awsConfig.dynamodb.availabilityTable,
-      Key: { pk: `OVERRIDE#${date}`, sk: date },
+      Key: { pk: `OVERRIDE#${tutorSub}#${date}`, sk: date },
     })
   );
 }
@@ -334,10 +432,15 @@ export async function getScheduledSessionsByDateRange(
   return (result.Items || []) as TutoringSession[];
 }
 
+// Slot locks are scoped per tutor: SLOT#{tutorSub}#{scheduledAt}. Two tutors
+// can hold the same start time simultaneously; a tutor cannot double-book themself.
+function slotLockId(tutorSub: string, scheduledAt: string): string {
+  return `SLOT#${tutorSub}#${scheduledAt}`;
+}
+
 export async function bookSession(
   session: TutoringSession
 ): Promise<void> {
-  const slotLockId = `SLOT#${session.scheduledAt}`;
   await docClient.send(
     new TransactWriteCommand({
       TransactItems: [
@@ -351,8 +454,9 @@ export async function bookSession(
           Put: {
             TableName: awsConfig.dynamodb.sessionsTable,
             Item: {
-              id: slotLockId,
+              id: slotLockId(session.tutorSub, session.scheduledAt),
               scheduledAt: session.scheduledAt,
+              tutorSub: session.tutorSub,
               studentSub: session.studentSub,
               studentEmail: session.studentEmail,
               status: "slot-lock",
@@ -368,9 +472,9 @@ export async function bookSession(
 
 export async function cancelBooking(
   sessionId: string,
+  tutorSub: string,
   scheduledAt: string
 ): Promise<void> {
-  const slotLockId = `SLOT#${scheduledAt}`;
   await docClient.send(
     new TransactWriteCommand({
       TransactItems: [
@@ -386,12 +490,28 @@ export async function cancelBooking(
         {
           Delete: {
             TableName: awsConfig.dynamodb.sessionsTable,
-            Key: { id: slotLockId },
+            Key: { id: slotLockId(tutorSub, scheduledAt) },
           },
         },
       ],
     })
   );
+}
+
+/**
+ * The tutor who most recently taught this household, if any — the most
+ * recent non-cancelled session that has already happened. Used to prefer
+ * continuity when assigning a pooled booking.
+ */
+export async function getMostRecentTutorForStudent(
+  studentSub: string
+): Promise<string | null> {
+  const sessions = await getSessionsByStudent(studentSub); // sorted newest scheduledAt first
+  const now = new Date();
+  const lastTaught = sessions.find(
+    (s) => s.tutorSub && s.status !== "cancelled" && new Date(s.scheduledAt) <= now
+  );
+  return lastTaught?.tutorSub || null;
 }
 
 // ── Topic progress operations ──
