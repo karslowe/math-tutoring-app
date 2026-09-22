@@ -67,6 +67,22 @@ fixes both at once: one record per lesson, and correct-by-construction
 per-tutor history, since attribution never depends on who happens to write
 the note up afterward.
 
+## Addendum (2026-09-22): the second tutor gets his own reminder inbox
+
+The "shares the founder's email for all session correspondence" cut above
+is partially reversed: the 1-hour-before session reminder Lambda
+(`infrastructure/lambda/session-reminder`) now sends to a real `SECOND_TUTOR_EMAIL`
+address for sessions with `tutorSub === SECOND_TUTOR_SUB`, instead of falling
+through to the founder's inbox. `upsertTutorMeetingRoom`'s caller
+(`/api/tutor/profile` PUT) writes that fixed address to the second tutor's
+profile row rather than whichever founder-account email happens to be signed
+in when acting as him.
+
+Booking confirmations and cancellations (`src/lib/ses.ts`) are unchanged and
+still go only to the founder's inbox — those never looked up a per-tutor
+email to begin with, so widening this any further than reminders was out of
+scope here.
+
 ## Considered Options
 
 - **A second real Cognito account, added to the `tutors` group.** Rejected

@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireTutor, resolveActingTutorSub, SECOND_TUTOR_NAME } from "@/lib/auth-helpers";
+import {
+  requireTutor,
+  resolveActingTutorSub,
+  SECOND_TUTOR_SUB,
+  SECOND_TUTOR_NAME,
+  SECOND_TUTOR_EMAIL,
+} from "@/lib/auth-helpers";
 import { getUserProfile, upsertTutorMeetingRoom } from "@/lib/dynamodb";
 
 // GET - Tutor views a profile (meeting room, etc.) — their own by default,
@@ -62,10 +68,13 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // The second tutor now gets his own reminder emails (reversal of
+    // ADR-0009's shared-inbox cut) — his profile row's email must not be
+    // overwritten with whichever founder-account email is signed in.
+    const isSecondTutor = acting.tutorSub === SECOND_TUTOR_SUB;
     await upsertTutorMeetingRoom(acting.tutorSub, {
-      email: user.email,
-      displayName:
-        acting.tutorSub === user.sub ? user.email.split("@")[0] : SECOND_TUTOR_NAME,
+      email: isSecondTutor ? SECOND_TUTOR_EMAIL || user.email : user.email,
+      displayName: isSecondTutor ? SECOND_TUTOR_NAME : user.email.split("@")[0],
       meetingRoomUrl: meetingRoomUrl.trim(),
     });
 

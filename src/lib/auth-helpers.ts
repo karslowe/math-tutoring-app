@@ -103,6 +103,11 @@ const TUTORS_CACHE_MS = 60_000;
 export const SECOND_TUTOR_SUB = process.env.NEXT_PUBLIC_SECOND_TUTOR_SUB || "";
 export const SECOND_TUTOR_NAME =
   process.env.NEXT_PUBLIC_SECOND_TUTOR_NAME || "Second Tutor";
+// Reversal of ADR-0009's "shares the founder's inbox" cut: the second tutor
+// now gets his own reminder emails. Server-only (not NEXT_PUBLIC) since
+// nothing on the client needs it. Falls back to the founder's own email if
+// unset, matching the original shared-inbox behavior.
+export const SECOND_TUTOR_EMAIL = process.env.SECOND_TUTOR_EMAIL || "";
 
 /**
  * The "tutors" Cognito group is the authority on who is a tutor — the
