@@ -1,6 +1,7 @@
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { formatInTimeZone } from "date-fns-tz";
 import { awsConfig } from "./aws-config";
+import { SECOND_TUTOR_EMAIL } from "./auth-helpers";
 
 const sesClient = new SESClient({
   region: awsConfig.region,
@@ -339,8 +340,10 @@ export async function sendSurveyCompletedEmail({
   goal: string;
 }): Promise<void> {
   const fromEmail = awsConfig.ses.fromEmail;
-  const tutorEmail = awsConfig.tutorEmail;
-  if (!fromEmail || !tutorEmail) {
+  // No tutor is assigned yet at survey time, so both tutors are notified of
+  // a new lead rather than just the founder.
+  const tutorEmails = [awsConfig.tutorEmail, SECOND_TUTOR_EMAIL].filter(Boolean);
+  if (!fromEmail || tutorEmails.length === 0) {
     console.warn("SES_FROM_EMAIL or TUTOR_EMAIL not configured, skipping survey email");
     return;
   }
@@ -367,7 +370,7 @@ export async function sendSurveyCompletedEmail({
   await sesClient.send(
     new SendEmailCommand({
       Source: fromEmail,
-      Destination: { ToAddresses: [tutorEmail] },
+      Destination: { ToAddresses: tutorEmails },
       Message: {
         Subject: { Data: `New student survey: ${studentName} - ${subject}`, Charset: "UTF-8" },
         Body: {

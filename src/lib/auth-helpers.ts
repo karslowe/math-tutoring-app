@@ -149,8 +149,10 @@ export async function listTutors(): Promise<TutorIdentity[]> {
   if (SECOND_TUTOR_SUB) {
     tutors.push({
       sub: SECOND_TUTOR_SUB,
-      // Shares the founder's inbox (see ADR-0009) rather than having his own.
-      email: tutors[0]?.email || "",
+      // Reversal of ADR-0009's shared-inbox cut (addendum 2026-09-22): uses
+      // his own address when configured, falling back to the founder's inbox
+      // if it isn't.
+      email: SECOND_TUTOR_EMAIL || tutors[0]?.email || "",
       name: SECOND_TUTOR_NAME,
       createdAt: "",
     });
