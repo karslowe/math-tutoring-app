@@ -376,6 +376,12 @@ export default function DashboardPage() {
                       No Zoom link configured
                     </p>
                   )}
+                  <Link
+                    href="/book-session"
+                    className="mt-2 text-xs text-primary-600 hover:text-primary-700"
+                  >
+                    View calendar / cancel session
+                  </Link>
                 </div>
               ) : (
                 <>

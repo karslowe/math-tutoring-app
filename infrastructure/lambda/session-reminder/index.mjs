@@ -15,29 +15,28 @@ const FALLBACK_TUTOR_EMAIL = process.env.TUTOR_EMAIL || "";
 const FALLBACK_ZOOM_LINK = process.env.ZOOM_LINK || "";
 const TUTOR_TIMEZONE = process.env.TUTOR_TIMEZONE || "America/Los_Angeles";
 
-const tutorProfileCache = new Map();
-
 /**
  * Look up the assigned tutor's own email and meeting room for this session,
  * falling back to the single legacy env vars for any session without a
  * tutorSub (pre-migration) or whose tutor has no profile row yet.
+ *
+ * Not cached: this Lambda's execution environment stays warm between the
+ * 15-minute cron runs, so an in-memory cache here would keep serving a
+ * tutor's old email/Zoom link long after they update their profile, until
+ * the container happens to cold-start. A GetItem per session is cheap
+ * enough that correctness wins over saving it.
  */
 async function getTutorContactInfo(tutorSub) {
   if (!tutorSub) {
     return { email: FALLBACK_TUTOR_EMAIL, zoomLink: FALLBACK_ZOOM_LINK };
   }
-  if (tutorProfileCache.has(tutorSub)) {
-    return tutorProfileCache.get(tutorSub);
-  }
   const result = await docClient.send(
     new GetCommand({ TableName: USERS_TABLE, Key: { sub: tutorSub } })
   );
-  const info = {
+  return {
     email: result.Item?.email || FALLBACK_TUTOR_EMAIL,
     zoomLink: result.Item?.meetingRoomUrl || FALLBACK_ZOOM_LINK,
   };
-  tutorProfileCache.set(tutorSub, info);
-  return info;
 }
 
 /**
