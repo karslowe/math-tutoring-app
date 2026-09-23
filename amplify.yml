@@ -6,7 +6,7 @@ frontend:
         - npm ci
     build:
       commands:
-        - env | grep -E '^(NEXT_PUBLIC_|DYNAMODB_|SES_|TUTOR_|APP_)' >> .env.production
+        - env | grep -E '^(NEXT_PUBLIC_|DYNAMODB_|SES_|TUTOR_|APP_|SECOND_|GOOGLE_)' >> .env.production
         - echo "AWS_REGION=${APP_REGION}" >> .env.production
         - echo "AWS_ACCESS_KEY_ID=${APP_ACCESS_KEY_ID}" >> .env.production
         - echo "AWS_SECRET_ACCESS_KEY=${APP_SECRET_ACCESS_KEY}" >> .env.production
