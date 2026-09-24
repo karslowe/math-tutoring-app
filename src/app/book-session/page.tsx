@@ -19,6 +19,7 @@ interface Booking {
   scheduledAt: string;
   subject: string;
   status: string;
+  tutorName?: string;
 }
 
 export default function BookSessionPage() {
@@ -252,6 +253,7 @@ export default function BookSessionPage() {
                           parseISO(booking.scheduledAt),
                           "EEEE, MMMM d 'at' h:mm a"
                         )}
+                        {booking.tutorName ? ` · with ${booking.tutorName}` : ""}
                       </p>
                     </div>
                     <button

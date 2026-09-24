@@ -395,9 +395,15 @@ export async function GET(request: NextRequest) {
     const meetingRoomBySub = new Map(
       tutorSubs.map((sub, i) => [sub, tutorProfiles[i]?.meetingRoomUrl])
     );
+    // Also enrich with the assigned tutor's display name, so the student can
+    // see who they were assigned (the pooled system picks automatically —
+    // see the "Assignment" glossary entry in CONTEXT.md).
+    const tutors = await listTutors();
+    const tutorNameBySub = new Map(tutors.map((t) => [t.sub, t.name || t.email]));
     const enriched = upcoming.map((s) => ({
       ...s,
       meetingRoomUrl: meetingRoomBySub.get(s.tutorSub) || undefined,
+      tutorName: tutorNameBySub.get(s.tutorSub) || undefined,
     }));
 
     return NextResponse.json({ bookings: enriched });

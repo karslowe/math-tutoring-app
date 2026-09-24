@@ -99,7 +99,24 @@ Session-note emails and referral-credit emails were checked and left alone
 — they only ever address the student/parent or the referrer, never a tutor,
 so there was nothing to route.
 
-## Considered Options
+## Addendum (2026-09-24): founder-first now beats continuity outright
+
+The "Booking assignment now prefers the founder" section above still let
+continuity (whoever last taught the household) override the founder when
+both were free for a slot — `chooseTutor()` checked `preferredTutorSub`
+before the founder. That's reversed: the founder now takes any slot he's
+free for regardless of who taught that household last; continuity is
+checked only once he's unavailable, as a tiebreaker among the other
+tutors. Karsten's reasoning: he wants every open hour on his own calendar
+by default, not just the hours no continuity relationship claims first —
+an explicit, deliberate call, not the previous "unless I say otherwise"
+already covered by this always being an automatic, non-student-facing
+choice.
+
+The student-facing booking list (`/book-session`) and its `GET
+/api/bookings` response now also surface `tutorName` (via `listTutors()`,
+the same source `/api/tutor/bookings` already used) so a student can see
+which tutor they were actually assigned after booking.
 
 - **A second real Cognito account, added to the `tutors` group.** Rejected
   for now: this is exactly the setup labor ("no need for multiple tutor

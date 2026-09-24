@@ -34,13 +34,13 @@ describe("chooseTutor", () => {
     expect(chooseTutor(candidates, tutors, null)).toBeNull();
   });
 
-  it("still prefers continuity over the founder-first rule", () => {
+  it("prefers the founder even when continuity points to the second tutor", () => {
     const candidates = new Set([founder.sub, second.sub]);
-    expect(chooseTutor(candidates, tutors, second.sub)).toBe(second.sub);
+    expect(chooseTutor(candidates, tutors, second.sub)).toBe(founder.sub);
   });
 
-  it("ignores a continuity preference for a tutor who isn't actually free", () => {
-    const candidates = new Set([founder.sub]);
-    expect(chooseTutor(candidates, tutors, second.sub)).toBe(founder.sub);
+  it("falls back to continuity when the founder cannot cover the slot", () => {
+    const candidates = new Set([second.sub]);
+    expect(chooseTutor(candidates, tutors, second.sub)).toBe(second.sub);
   });
 });
