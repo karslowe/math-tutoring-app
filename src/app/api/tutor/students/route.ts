@@ -34,7 +34,12 @@ export async function GET(request: NextRequest) {
         const name = attrs.find((a) => a.Name === "name")?.Value || "";
         return { sub, email, name, username: u.Username || "" };
       })
-      .filter((s) => s.sub !== user.sub); // Exclude the tutor themselves
+      .filter((s) => s.sub !== user.sub) // Exclude the tutor themselves
+      .sort((a, b) =>
+        (a.name || a.email).localeCompare(b.name || b.email, undefined, {
+          sensitivity: "base",
+        })
+      );
 
     return NextResponse.json({ students });
   } catch (error: any) {
