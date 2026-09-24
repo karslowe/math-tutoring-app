@@ -12,6 +12,7 @@ import {
   TutoringSession,
 } from "@/lib/dynamodb";
 import { sendSessionNoteEmail, sendReferralCreditEmail } from "@/lib/ses";
+import { getDownloadUrl } from "@/lib/s3";
 import { randomUUID } from "crypto";
 
 // POST - Adds notes to a student's session. If `sessionId` names an existing
@@ -204,10 +205,20 @@ export async function GET(request: NextRequest) {
       listTutors(),
     ]);
     const tutorNameMap = new Map(tutors.map((t) => [t.sub, t.name || t.email]));
-    const enriched = sessions.map((s) => ({
-      ...s,
-      tutorName: tutorNameMap.get(s.tutorSub) || "",
-    }));
+    const enriched = await Promise.all(
+      sessions.map(async (s) => ({
+        ...s,
+        tutorName: tutorNameMap.get(s.tutorSub) || "",
+        attachments: s.attachments
+          ? await Promise.all(
+              s.attachments.map(async (a) => ({
+                ...a,
+                url: await getDownloadUrl(a.key),
+              }))
+            )
+          : undefined,
+      }))
+    );
     return NextResponse.json({ sessions: enriched });
   } catch (error: any) {
     console.error("Get session notes error:", error);

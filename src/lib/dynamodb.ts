@@ -35,6 +35,12 @@ export const MASTERY_LEVELS: Record<MasteryLevel, number> = {
 
 // ── Session / Booking operations ──
 
+export interface SessionAttachment {
+  key: string;
+  name: string;
+  uploadedAt: string;
+}
+
 export interface TutoringSession {
   id: string;
   studentSub: string;
@@ -51,6 +57,11 @@ export interface TutoringSession {
   createdAt: string;
   googleEventId?: string;
   googleEventStatus?: "synced" | "failed";
+  // The actual worked-through material from the session (worksheets, scans,
+  // etc.), stored in S3 and linked here — distinct from the general-purpose
+  // per-student "completed notes" upload, which isn't tied to any one
+  // session.
+  attachments?: SessionAttachment[];
 }
 
 export async function createSession(
@@ -131,6 +142,29 @@ export async function completeSessionWithNotes(
         ":topics": updates.topics,
       },
       ConditionExpression: "#status = :scheduled",
+    })
+  );
+}
+
+/**
+ * Appends one attachment to a session's list — additive, so a tutor can
+ * attach material to a session more than once over time rather than only
+ * at the moment notes get written.
+ */
+export async function addSessionAttachment(
+  id: string,
+  attachment: SessionAttachment
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: awsConfig.dynamodb.sessionsTable,
+      Key: { id },
+      UpdateExpression:
+        "SET attachments = list_append(if_not_exists(attachments, :empty), :new)",
+      ExpressionAttributeValues: {
+        ":empty": [],
+        ":new": [attachment],
+      },
     })
   );
 }

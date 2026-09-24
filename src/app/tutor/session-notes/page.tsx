@@ -27,6 +27,13 @@ interface TopicMastery {
   level: "Learning" | "Practicing" | "Getting It" | "Mastered";
 }
 
+interface SessionAttachment {
+  key: string;
+  name: string;
+  uploadedAt: string;
+  url: string;
+}
+
 interface SessionNote {
   id: string;
   studentSub: string;
@@ -38,6 +45,7 @@ interface SessionNote {
   status: string;
   createdAt: string;
   tutorName?: string;
+  attachments?: SessionAttachment[];
 }
 
 interface TopicProgressEntry {
@@ -162,6 +170,36 @@ export default function TutorSessionNotesPage() {
     },
     [getAuthHeaders]
   );
+
+  const [uploadingAttachmentFor, setUploadingAttachmentFor] = useState<
+    string | null
+  >(null);
+
+  async function handleAttachmentUpload(sessionId: string, file: File) {
+    setUploadingAttachmentFor(sessionId);
+    try {
+      const headers = await getAuthHeaders();
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("sessionId", sessionId);
+      const res = await fetch("/api/tutor/session-notes/attachments", {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to attach file");
+      }
+      if (selectedStudent) {
+        await fetchSessions(selectedStudent);
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setUploadingAttachmentFor(null);
+    }
+  }
 
   // Fetch progress when student is selected
   const fetchProgress = useCallback(
@@ -630,6 +668,47 @@ export default function TutorSessionNotesPage() {
                             ))}
                           </div>
                         )}
+                        <div className="flex flex-wrap items-center gap-2 mt-2">
+                          {session.attachments?.map((a) => (
+                            <a
+                              key={a.key}
+                              href={a.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-xs text-primary-700 bg-primary-50 hover:bg-primary-100 px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              <svg
+                                className="w-3.5 h-3.5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                                />
+                              </svg>
+                              {a.name}
+                            </a>
+                          ))}
+                          <label className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 cursor-pointer px-2 py-1.5">
+                            {uploadingAttachmentFor === session.id
+                              ? "Uploading..."
+                              : "+ Attach work"}
+                            <input
+                              type="file"
+                              className="hidden"
+                              disabled={uploadingAttachmentFor === session.id}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleAttachmentUpload(session.id, file);
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                        </div>
                       </div>
                     ))}
                   </div>

@@ -31,6 +31,18 @@ export function getStudentNotesPrefix(sub: string): string {
   return `students/${sub}/completed-notes/`;
 }
 
+/**
+ * Get the S3 prefix for material attached to one specific session, as
+ * opposed to the student's general completed-notes folder above.
+ * Structure: students/{cognitoSub}/sessions/{sessionId}/
+ */
+export function getSessionAttachmentPrefix(
+  studentSub: string,
+  sessionId: string
+): string {
+  return `students/${studentSub}/sessions/${sessionId}/`;
+}
+
 export async function uploadFile(
   key: string,
   body: Buffer,
