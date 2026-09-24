@@ -101,6 +101,10 @@ export default function TutorSessionNotesPage() {
   const [topicName, setTopicName] = useState("");
   const [topicLevel, setTopicLevel] = useState<TopicMastery["level"]>("Learning");
 
+  // Staged file to attach once the note is saved (the session doesn't exist
+  // yet for a walk-in until the POST below creates it).
+  const [pendingAttachment, setPendingAttachment] = useState<File | null>(null);
+
   // Progress chart state
   const [progress, setProgress] = useState<TopicSummary[]>([]);
   const [loadingProgress, setLoadingProgress] = useState(false);
@@ -287,8 +291,8 @@ export default function TutorSessionNotesPage() {
         }),
       });
 
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || "Failed to save note");
       }
 
@@ -297,7 +301,13 @@ export default function TutorSessionNotesPage() {
       setNotes("");
       setTopics([]);
       setSelectedSessionId("");
-      fetchSessions(selectedStudent);
+
+      if (pendingAttachment && data.session?.id) {
+        await handleAttachmentUpload(data.session.id, pendingAttachment);
+        setPendingAttachment(null);
+      } else {
+        fetchSessions(selectedStudent);
+      }
       fetchProgress(selectedStudent);
     } catch (err: any) {
       setError(err.message);
@@ -498,6 +508,43 @@ export default function TutorSessionNotesPage() {
                       required
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-y"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Attach Work Completed
+                    </label>
+                    {pendingAttachment ? (
+                      <div className="flex items-center justify-between text-sm border border-gray-200 rounded-lg px-3 py-2">
+                        <span className="text-gray-700 truncate">
+                          {pendingAttachment.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPendingAttachment(null)}
+                          className="text-xs text-red-600 hover:text-red-700 font-medium ml-2"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 cursor-pointer border border-dashed border-gray-300 rounded-lg px-3 py-2">
+                        + Choose a file (worksheet, scan, etc.)
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) setPendingAttachment(file);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      Uploaded once you save the note below. You can also attach
+                      files to past sessions from the History tab.
+                    </p>
                   </div>
 
                   {/* Topics Covered Section */}
