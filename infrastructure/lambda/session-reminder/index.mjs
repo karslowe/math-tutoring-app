@@ -85,10 +85,15 @@ export async function handler() {
         session.tutorSub
       );
 
-      // Send to student and their assigned tutor
+      // Send to student, their assigned tutor, and always the founder
+      // (the owner wants visibility into every reminder regardless of
+      // which tutor a session is assigned to).
       const recipients = [session.studentEmail];
       if (tutorEmail && !recipients.includes(tutorEmail)) {
         recipients.push(tutorEmail);
+      }
+      if (FALLBACK_TUTOR_EMAIL && !recipients.includes(FALLBACK_TUTOR_EMAIL)) {
+        recipients.push(FALLBACK_TUTOR_EMAIL);
       }
 
       const studentName = session.studentEmail.split("@")[0];
