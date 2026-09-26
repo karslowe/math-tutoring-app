@@ -75,6 +75,7 @@ async function getAccessToken(): Promise<string> {
       client_secret: secret.client_secret,
       refresh_token: secret.refresh_token,
     }),
+    cache: "no-store",
   });
 
   const body = await response.json().catch(() => ({}));
@@ -99,6 +100,7 @@ async function googleFetch(url: string, init: RequestInit): Promise<any> {
   const response = await fetch(url, {
     ...init,
     headers: { ...(init.headers || {}), Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
   });
   if (response.status === 204) return null;
   const body = await response.json().catch(() => ({}));
