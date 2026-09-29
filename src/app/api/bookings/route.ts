@@ -218,6 +218,13 @@ export async function POST(request: NextRequest) {
       if (assignedTutor?.email) {
         recipients.push(assignedTutor.email);
       }
+      // Always CC the founder, regardless of which tutor was assigned —
+      // same reasoning as the session-reminder Lambda (see 599ebdd): he's
+      // responsible for the scheduling system working correctly, not just
+      // visibility into his own sessions.
+      if (awsConfig.tutorEmail && !recipients.includes(awsConfig.tutorEmail)) {
+        recipients.push(awsConfig.tutorEmail);
+      }
       const tutorProfile = assignedTutor
         ? await getUserProfile(assignedTutor.sub)
         : null;
@@ -346,6 +353,12 @@ export async function DELETE(request: NextRequest) {
       const assignedTutor = tutors.find((t) => t.sub === session.tutorSub);
       if (assignedTutor?.email) {
         recipients.push(assignedTutor.email);
+      }
+      // Always CC the founder, regardless of which tutor was assigned —
+      // same reasoning as the booking-confirmation path above and the
+      // session-reminder Lambda (see 599ebdd).
+      if (awsConfig.tutorEmail && !recipients.includes(awsConfig.tutorEmail)) {
+        recipients.push(awsConfig.tutorEmail);
       }
 
       await sendBookingCancellationEmail({

@@ -118,10 +118,16 @@ export async function sendBookingConfirmationEmail({
   meetingRoomUrl?: string;
 }): Promise<void> {
   const fromEmail = awsConfig.ses.fromEmail;
-  if (!fromEmail) return;
+  if (!fromEmail) {
+    console.warn("SES_FROM_EMAIL not configured, skipping booking confirmation email");
+    return;
+  }
 
   const validRecipients = to.filter((email) => email && email.includes("@"));
-  if (validRecipients.length === 0) return;
+  if (validRecipients.length === 0) {
+    console.warn("No valid recipients, skipping booking confirmation email", { to });
+    return;
+  }
 
   const ZOOM_LINK = meetingRoomUrl || DEFAULT_ZOOM_LINK;
   const dateStr = formatEmailDate(scheduledAt);
@@ -179,10 +185,16 @@ export async function sendBookingCancellationEmail({
   subject: string;
 }): Promise<void> {
   const fromEmail = awsConfig.ses.fromEmail;
-  if (!fromEmail) return;
+  if (!fromEmail) {
+    console.warn("SES_FROM_EMAIL not configured, skipping booking cancellation email");
+    return;
+  }
 
   const validRecipients = to.filter((email) => email && email.includes("@"));
-  if (validRecipients.length === 0) return;
+  if (validRecipients.length === 0) {
+    console.warn("No valid recipients, skipping booking cancellation email", { to });
+    return;
+  }
 
   const dateStr = formatEmailDate(scheduledAt);
   const timeStr = formatEmailTime(scheduledAt);
@@ -235,8 +247,14 @@ export async function sendReferralInviteEmail({
   signupUrl: string;
 }): Promise<void> {
   const fromEmail = awsConfig.ses.fromEmail;
-  if (!fromEmail) return;
-  if (!to || !to.includes("@")) return;
+  if (!fromEmail) {
+    console.warn("SES_FROM_EMAIL not configured, skipping referral invite email");
+    return;
+  }
+  if (!to || !to.includes("@")) {
+    console.warn("Invalid recipient, skipping referral invite email", { to });
+    return;
+  }
 
   const htmlBody = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -286,8 +304,14 @@ export async function sendFamilyInviteEmail({
   signupUrl: string;
 }): Promise<void> {
   const fromEmail = awsConfig.ses.fromEmail;
-  if (!fromEmail) return;
-  if (!to || !to.includes("@")) return;
+  if (!fromEmail) {
+    console.warn("SES_FROM_EMAIL not configured, skipping family invite email");
+    return;
+  }
+  if (!to || !to.includes("@")) {
+    console.warn("Invalid recipient, skipping family invite email", { to });
+    return;
+  }
 
   const greeting = parentName ? parentName : parentEmail;
 
@@ -395,8 +419,14 @@ export async function sendReferralCreditEmail({
   referredStudentName: string;
 }): Promise<void> {
   const fromEmail = awsConfig.ses.fromEmail;
-  if (!fromEmail) return;
-  if (!to || !to.includes("@")) return;
+  if (!fromEmail) {
+    console.warn("SES_FROM_EMAIL not configured, skipping referral credit email");
+    return;
+  }
+  if (!to || !to.includes("@")) {
+    console.warn("Invalid recipient, skipping referral credit email", { to });
+    return;
+  }
 
   const htmlBody = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
