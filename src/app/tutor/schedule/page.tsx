@@ -388,8 +388,10 @@ function TutorScheduleContent() {
         {activeTab === "calendar" && SECOND_TUTOR_SUB && (
           <div>
             <p className="text-sm text-gray-600 mb-4">
-              The next 7 days, blocks already subtracted — {FOUNDER_NAME} in red,{" "}
-              {SECOND_TUTOR_NAME} in blue.
+              The next 7 days — {FOUNDER_NAME} in red, {SECOND_TUTOR_NAME} in blue. Solid blocks
+              are booked sessions; pale blocks are open hours nobody's booked yet. The hatched
+              gray blocks are {FOUNDER_NAME}'s personal Google Calendar — time that's already
+              excluded from his tutoring hours.
             </p>
             <TutorHoursCalendar
               getToken={getToken}
