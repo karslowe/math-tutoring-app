@@ -159,62 +159,6 @@ export interface BusyInterval {
 }
 
 /**
- * Clip busy intervals (UTC ISO) to the portion that falls within one
- * tutor-local calendar day, in HH:MM. A multi-day or overnight interval
- * contributes a separately-clamped window to every day it actually
- * touches, rather than being dropped or attributed only to its start day —
- * same clamp-against-day-boundaries approach as subtractBusyIntervals
- * above, just returning the busy windows themselves instead of subtracting
- * them from availability.
- */
-export function busyIntervalsForDate(
-  dateStr: string,
-  busy: BusyInterval[],
-  timezone: string = DEFAULT_TIMEZONE
-): AvailabilitySlot[] {
-  const dayStart = fromZonedTime(`${dateStr}T00:00:00`, timezone);
-  const dayEnd = fromZonedTime(`${dateStr}T23:59:59.999`, timezone);
-
-  const windows: AvailabilitySlot[] = [];
-  for (const b of busy) {
-    const start = new Date(b.start);
-    const end = new Date(b.end);
-    if (end <= dayStart || start >= dayEnd) continue; // doesn't touch this date
-
-    const clampedStart = start < dayStart ? dayStart : start;
-    const clampedEnd = end > dayEnd ? dayEnd : end;
-
-    const zonedStart = toZonedTime(clampedStart, timezone);
-    const zonedEnd = toZonedTime(clampedEnd, timezone);
-    windows.push({
-      start: toHHMM(zonedStart.getHours() * 60 + zonedStart.getMinutes()),
-      end: toHHMM(zonedEnd.getHours() * 60 + zonedEnd.getMinutes()),
-    });
-  }
-  return windows;
-}
-
-/**
- * The UTC instant range covering one tutor-local calendar day range,
- * start-of-day through end-of-day — for querying an external API (e.g.
- * Google freebusy) by date range without missing evening-hour events on
- * the boundary days. Naively appending "T00:00:00.000Z"/"T23:59:59.999Z"
- * to the date strings looks equivalent but silently misses events after
- * ~5pm Pacific on the end date, since it treats UTC midnight as local
- * midnight.
- */
-export function zonedDateRangeToUtcISO(
-  startDate: string,
-  endDate: string,
-  timezone: string = DEFAULT_TIMEZONE
-): { startISO: string; endISO: string } {
-  return {
-    startISO: fromZonedTime(`${startDate}T00:00:00`, timezone).toISOString(),
-    endISO: fromZonedTime(`${endDate}T23:59:59.999`, timezone).toISOString(),
-  };
-}
-
-/**
  * Convert UTC busy intervals (e.g. from a Google freebusy check) into
  * tutor-local HH:MM blocked ranges for one date, expanded by a buffer on
  * each side, and subtract them from the base windows — the same shape and

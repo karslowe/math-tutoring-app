@@ -11,7 +11,6 @@ import {
   filterBookedSlots,
   filterPastSlots,
   subtractBusyIntervals,
-  zonedDateRangeToUtcISO,
 } from "@/lib/slots";
 import { getFounderBusyIntervals } from "@/lib/google-calendar";
 import { awsConfig } from "@/lib/aws-config";
@@ -78,10 +77,9 @@ export async function GET(request: NextRequest) {
     // If the check fails, treat him as busy the whole window rather than
     // silently offering slots during something the check couldn't see.
     const founderSub = tutors[0].sub;
-    const founderBusyRange = zonedDateRangeToUtcISO(startDate, endDate, TUTOR_TIMEZONE);
     const founderBusy = await getFounderBusyIntervals(
-      founderBusyRange.startISO,
-      founderBusyRange.endISO
+      startDate + "T00:00:00.000Z",
+      endDate + "T23:59:59.999Z"
     );
 
     // Generate date strings for each day in range (timezone-aware)
