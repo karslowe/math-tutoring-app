@@ -183,17 +183,56 @@ export default function TutorSessionNotesPage() {
     setUploadingAttachmentFor(sessionId);
     try {
       const headers = await getAuthHeaders();
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("sessionId", sessionId);
+      const jsonHeaders = { ...headers, "Content-Type": "application/json" };
+
+      // 1. Get a presigned URL (small JSON request).
+      const presignRes = await fetch(
+        "/api/tutor/session-notes/attachments/presign",
+        {
+          method: "POST",
+          headers: jsonHeaders,
+          body: JSON.stringify({
+            sessionId,
+            fileName: file.name,
+            contentType: file.type,
+            size: file.size,
+          }),
+        }
+      );
+      const presign = await presignRes.json().catch(() => null);
+      if (!presignRes.ok) {
+        throw new Error(
+          presign?.error ||
+            `Failed to prepare upload (server returned ${presignRes.status})`
+        );
+      }
+
+      // 2. Upload the bytes straight to S3, bypassing the app server's
+      // request-size cap.
+      const putRes = await fetch(presign.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!putRes.ok) {
+        throw new Error(`Upload to storage failed (${putRes.status})`);
+      }
+
+      // 3. Record the attachment on the session.
       const res = await fetch("/api/tutor/session-notes/attachments", {
         method: "POST",
-        headers,
-        body: formData,
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          sessionId,
+          key: presign.key,
+          name: presign.name,
+        }),
       });
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to attach file");
+        const data = await res.json().catch(() => null);
+        throw new Error(
+          data?.error || `Failed to attach file (server returned ${res.status})`
+        );
       }
       if (selectedStudent) {
         await fetchSessions(selectedStudent);

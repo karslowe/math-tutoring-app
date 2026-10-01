@@ -4,6 +4,7 @@ import {
   ListObjectsV2Command,
   GetObjectCommand,
   DeleteObjectCommand,
+  HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { awsConfig } from "./aws-config";
@@ -41,6 +42,20 @@ export function getSessionAttachmentPrefix(
   sessionId: string
 ): string {
   return `students/${studentSub}/sessions/${sessionId}/`;
+}
+
+/**
+ * True when `key` is a direct child of the session's attachment folder.
+ * Guards the confirm step so a client can't attach some other object.
+ */
+export function isSessionAttachmentKey(
+  key: string,
+  studentSub: string,
+  sessionId: string
+): boolean {
+  const prefix = getSessionAttachmentPrefix(studentSub, sessionId);
+  const rest = key.slice(prefix.length);
+  return key.startsWith(prefix) && rest.length > 0 && !rest.includes("/");
 }
 
 export async function uploadFile(
@@ -95,4 +110,38 @@ export async function deleteFile(key: string): Promise<void> {
       Key: key,
     })
   );
+}
+
+/**
+ * Presigned PUT so the browser uploads straight to S3, bypassing the
+ * host's request-body cap. ContentLength is signed, so S3 rejects an
+ * upload whose size differs from what the server validated.
+ */
+export async function getUploadUrl(
+  key: string,
+  contentType: string,
+  contentLength: number
+): Promise<string> {
+  const command = new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: key,
+    ContentType: contentType,
+    ContentLength: contentLength,
+  });
+  return getSignedUrl(s3Client, command, { expiresIn: 600 });
+}
+
+/** Size in bytes of an object, or null if it doesn't exist. */
+export async function getObjectSize(key: string): Promise<number | null> {
+  try {
+    const res = await s3Client.send(
+      new HeadObjectCommand({ Bucket: BUCKET, Key: key })
+    );
+    return res.ContentLength ?? 0;
+  } catch (err: any) {
+    if (err?.name === "NotFound" || err?.$metadata?.httpStatusCode === 404) {
+      return null;
+    }
+    throw err;
+  }
 }
