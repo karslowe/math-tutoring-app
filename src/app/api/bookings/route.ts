@@ -20,7 +20,13 @@ import {
   updateSessionGoogleEvent,
   TutoringSession,
 } from "@/lib/dynamodb";
-import { getAvailabilityForDate, generateTimeSlots, filterBookedSlots } from "@/lib/slots";
+import {
+  getAvailabilityForDate,
+  generateTimeSlots,
+  filterBookedSlots,
+  subtractBusyIntervals,
+  zonedDateRangeToUtcISO,
+} from "@/lib/slots";
 import { chooseTutor } from "@/lib/booking-assignment";
 import {
   getFounderBusyIntervals,
@@ -56,34 +62,47 @@ async function getFreeTutorSubs(
 
   await Promise.all(
     tutors.map(async (tutor) => {
+      const dayRange = zonedDateRangeToUtcISO(dateStr, dateStr, TUTOR_TIMEZONE);
       const [weekly, overrides, bookedForTutor] = await Promise.all([
         getWeeklyAvailability(tutor.sub),
         getDateOverrides(tutor.sub, dateStr, dateStr),
-        getScheduledSessionsByDateRange(
-          dateStr + "T00:00:00.000Z",
-          dateStr + "T23:59:59.999Z"
-        ),
+        getScheduledSessionsByDateRange(dayRange.startISO, dayRange.endISO),
       ]);
-      const windows = getAvailabilityForDate(dateStr, weekly, overrides, TUTOR_TIMEZONE);
+      let windows = getAvailabilityForDate(dateStr, weekly, overrides, TUTOR_TIMEZONE);
+
+      // Founder's real-world calendars (school, RA duty, etc.) get the
+      // final say at booking time too — see docs/adr/0008. Re-derived
+      // fresh here (not trusted from /api/slots) so a race between two
+      // students booking the same union slot resolves correctly.
+      //
+      // Uses the exact same subtractBusyIntervals buffer-aware logic the
+      // listing uses, rather than an independent buffered window around
+      // just this slot — that independent-window approach double-applied
+      // the buffer (once baking it into the listing's window edges, again
+      // re-padding around the candidate slot here), so a slot sitting
+      // exactly at a buffer-adjusted window edge would fail this check
+      // even though the listing had already accounted for it. Fail
+      // closed: if the check can't be made, treat him as unavailable the
+      // whole day.
+      if (tutor.sub === founderSub) {
+        const busy = await getFounderBusyIntervals(dayRange.startISO, dayRange.endISO);
+        windows = busy
+          ? subtractBusyIntervals(
+              windows,
+              dateStr,
+              busy,
+              TUTOR_TIMEZONE,
+              awsConfig.google.bufferMinutes
+            )
+          : [];
+      }
+
       const daySlots = generateTimeSlots(dateStr, windows, 60, TUTOR_TIMEZONE);
       const bookedTimes = bookedForTutor
         .filter((s) => s.tutorSub === tutor.sub)
         .map((s) => s.scheduledAt);
       const availableSlots = filterBookedSlots(daySlots, bookedTimes);
       if (!availableSlots.includes(scheduledAt)) return;
-
-      // Founder's real-world calendars (school, RA duty, etc.) get the
-      // final say at booking time too — see docs/adr/0008. A narrow window
-      // around just this slot, not the whole day. Fail closed: if the
-      // check can't be made, don't add him as a candidate.
-      if (tutor.sub === founderSub) {
-        const bufferMs = awsConfig.google.bufferMinutes * 60_000;
-        const slotStart = new Date(scheduledAt);
-        const windowStart = new Date(slotStart.getTime() - bufferMs).toISOString();
-        const windowEnd = new Date(slotStart.getTime() + 60 * 60_000 + bufferMs).toISOString();
-        const busy = await getFounderBusyIntervals(windowStart, windowEnd);
-        if (busy === null || busy.length > 0) return;
-      }
 
       free.add(tutor.sub);
     })
@@ -203,6 +222,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Looked up once, shared by the confirmation email and the calendar
+    // push below — both need to say who's actually running the session.
+    const assignedTutor = tutors.find((t) => t.sub === session!.tutorSub);
+    const tutorName = assignedTutor?.name || assignedTutor?.email || "your tutor";
+
     // Send confirmation email (non-blocking)
     try {
       const recipients = [user.email];
@@ -214,7 +238,6 @@ export async function POST(request: NextRequest) {
         recipients.push(profile.email);
       }
 
-      const assignedTutor = tutors.find((t) => t.sub === session!.tutorSub);
       if (assignedTutor?.email) {
         recipients.push(assignedTutor.email);
       }
@@ -234,6 +257,7 @@ export async function POST(request: NextRequest) {
         studentName: user.email.split("@")[0],
         scheduledAt,
         subject: session.subject,
+        tutorName,
         meetingRoomUrl: tutorProfile?.meetingRoomUrl,
       });
     } catch (emailError) {
@@ -250,8 +274,8 @@ export async function POST(request: NextRequest) {
       const endDate = new Date(startDate.getTime() + session.duration * 60_000);
       const eventId = await insertTutoringEvent({
         bookingId: session.id,
-        summary: `KLMathPrep: ${user.email.split("@")[0]} (${session.subject})`,
-        description: `Booking ID: ${session.id}\nStudent: ${user.email}`,
+        summary: `KLMathPrep: ${user.email.split("@")[0]} (${session.subject}) — ${tutorName}`,
+        description: `Tutor: ${tutorName}\nBooking ID: ${session.id}\nStudent: ${user.email}`,
         startISO: startDate.toISOString(),
         endISO: endDate.toISOString(),
         attendeeEmail: user.email,
@@ -366,6 +390,7 @@ export async function DELETE(request: NextRequest) {
         studentName: user.email.split("@")[0],
         scheduledAt: session.scheduledAt,
         subject: session.subject,
+        tutorName: assignedTutor?.name || assignedTutor?.email || "your tutor",
       });
     } catch (emailError) {
       console.error("Failed to send cancellation email:", emailError);

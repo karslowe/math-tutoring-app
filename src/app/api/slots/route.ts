@@ -57,6 +57,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ days: [] });
     }
 
+    // Shared by both queries below — local-day-range, not naive UTC
+    // midnight, so an evening booking/event near the end of the range
+    // doesn't get silently dropped (see zonedDateRangeToUtcISO).
+    const requestedRange = zonedDateRangeToUtcISO(startDate, endDate, TUTOR_TIMEZONE);
+
     // Fetch all data in parallel, per tutor
     const [tutorData, bookedSessions] = await Promise.all([
       Promise.all(
@@ -66,10 +71,7 @@ export async function GET(request: NextRequest) {
           overrides: await getDateOverrides(tutor.sub, startDate, endDate),
         }))
       ),
-      getScheduledSessionsByDateRange(
-        startDate + "T00:00:00.000Z",
-        endDate + "T23:59:59.999Z"
-      ),
+      getScheduledSessionsByDateRange(requestedRange.startISO, requestedRange.endISO),
     ]);
 
     // Founder tutor's real-world calendars (School, Personal, RA duty, etc.)
@@ -78,10 +80,9 @@ export async function GET(request: NextRequest) {
     // If the check fails, treat him as busy the whole window rather than
     // silently offering slots during something the check couldn't see.
     const founderSub = tutors[0].sub;
-    const founderBusyRange = zonedDateRangeToUtcISO(startDate, endDate, TUTOR_TIMEZONE);
     const founderBusy = await getFounderBusyIntervals(
-      founderBusyRange.startISO,
-      founderBusyRange.endISO
+      requestedRange.startISO,
+      requestedRange.endISO
     );
 
     // Generate date strings for each day in range (timezone-aware)

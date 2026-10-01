@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireTutor, listTutors } from "@/lib/auth-helpers";
 import { getScheduledSessionsByDateRange } from "@/lib/dynamodb";
+import { zonedDateRangeToUtcISO } from "@/lib/slots";
 import {
   CognitoIdentityProviderClient,
   ListUsersCommand,
@@ -10,6 +11,7 @@ import { awsConfig } from "@/lib/aws-config";
 const cognitoClient = new CognitoIdentityProviderClient({
   region: awsConfig.region,
 });
+const TUTOR_TIMEZONE = process.env.TUTOR_TIMEZONE || "America/Los_Angeles";
 
 // GET - Tutor views all booked sessions (across both tutors, per ADR-0007) in a date range
 export async function GET(request: NextRequest) {
@@ -29,11 +31,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const range = zonedDateRangeToUtcISO(startDate, endDate, TUTOR_TIMEZONE);
     const [sessions, usersResponse, tutors] = await Promise.all([
-      getScheduledSessionsByDateRange(
-        startDate + "T00:00:00.000Z",
-        endDate + "T23:59:59.999Z"
-      ),
+      getScheduledSessionsByDateRange(range.startISO, range.endISO),
       cognitoClient.send(
         new ListUsersCommand({
           UserPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID,

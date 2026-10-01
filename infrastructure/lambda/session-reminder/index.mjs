@@ -28,7 +28,7 @@ const TUTOR_TIMEZONE = process.env.TUTOR_TIMEZONE || "America/Los_Angeles";
  */
 async function getTutorContactInfo(tutorSub) {
   if (!tutorSub) {
-    return { email: FALLBACK_TUTOR_EMAIL, zoomLink: FALLBACK_ZOOM_LINK };
+    return { email: FALLBACK_TUTOR_EMAIL, zoomLink: FALLBACK_ZOOM_LINK, name: TUTOR_NAME };
   }
   const result = await docClient.send(
     new GetCommand({ TableName: USERS_TABLE, Key: { sub: tutorSub } })
@@ -36,6 +36,10 @@ async function getTutorContactInfo(tutorSub) {
   return {
     email: result.Item?.email || FALLBACK_TUTOR_EMAIL,
     zoomLink: result.Item?.meetingRoomUrl || FALLBACK_ZOOM_LINK,
+    // TUTOR_NAME is a single global env var and isn't aware of which of the
+    // two tutors is actually assigned — prefer the session's own tutor's
+    // displayName so the reminder names who's actually running it.
+    name: result.Item?.displayName || TUTOR_NAME,
   };
 }
 
@@ -81,7 +85,7 @@ export async function handler() {
         timeZoneName: "short",
       });
 
-      const { email: tutorEmail, zoomLink: ZOOM_LINK } = await getTutorContactInfo(
+      const { email: tutorEmail, zoomLink: ZOOM_LINK, name: tutorName } = await getTutorContactInfo(
         session.tutorSub
       );
 
@@ -121,6 +125,7 @@ export async function handler() {
                       <p style="color: #6b7280; margin: 0 0 20px;">This is a friendly reminder that a tutoring session is starting in about 1 hour:</p>
                       <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 20px;">
                         <p style="color: #374151; margin: 0 0 8px;"><strong>Student:</strong> ${studentName}</p>
+                        <p style="color: #374151; margin: 0 0 8px;"><strong>Tutor:</strong> ${tutorName}</p>
                         <p style="color: #374151; margin: 0 0 8px;"><strong>Date &amp; Time:</strong> ${formattedDate}</p>
                         <p style="color: #374151; margin: 0 0 8px;"><strong>Duration:</strong> ${session.duration} minutes</p>
                         <p style="color: #374151; margin: 0;"><strong>Subject:</strong> ${session.subject}</p>${ZOOM_LINK ? `
@@ -128,13 +133,13 @@ export async function handler() {
                       </div>${ZOOM_LINK ? `
                       <a href="${ZOOM_LINK}" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; margin: 0 0 16px;">Join Zoom Meeting</a>` : ""}
                       <p style="color: #6b7280; font-size: 14px; margin: 0 0 8px;">Make sure to upload any materials you'd like to review before the session!</p>
-                      <p style="color: #9ca3af; font-size: 13px; margin: 0;">Best,<br/>${TUTOR_NAME}</p>
+                      <p style="color: #9ca3af; font-size: 13px; margin: 0;">Best,<br/>${tutorName}</p>
                     </div>
                   </div>
                 `,
               },
               Text: {
-                Data: `Reminder: You have a KL Math Prep session in about 1 hour!\n\nStudent: ${studentName}\nDate & Time: ${formattedDate}\nDuration: ${session.duration} min\nSubject: ${session.subject}${ZOOM_LINK ? `\nZoom Link: ${ZOOM_LINK}` : ""}\n\nMake sure to upload any materials beforehand!\n\nBest,\n${TUTOR_NAME}`,
+                Data: `Reminder: You have a KL Math Prep session in about 1 hour!\n\nStudent: ${studentName}\nTutor: ${tutorName}\nDate & Time: ${formattedDate}\nDuration: ${session.duration} min\nSubject: ${session.subject}${ZOOM_LINK ? `\nZoom Link: ${ZOOM_LINK}` : ""}\n\nMake sure to upload any materials beforehand!\n\nBest,\n${tutorName}`,
               },
             },
           },

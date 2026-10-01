@@ -109,12 +109,14 @@ export async function sendBookingConfirmationEmail({
   studentName,
   scheduledAt,
   subject,
+  tutorName,
   meetingRoomUrl,
 }: {
   to: string[];
   studentName: string;
   scheduledAt: string;
   subject: string;
+  tutorName: string;
   meetingRoomUrl?: string;
 }): Promise<void> {
   const fromEmail = awsConfig.ses.fromEmail;
@@ -143,6 +145,7 @@ export async function sendBookingConfirmationEmail({
         <p style="color: #6b7280; margin: 0 0 20px;">Your tutoring session has been confirmed:</p>
         <div style="background: #f0fdf4; border-left: 4px solid #059669; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 20px;">
           <p style="color: #374151; margin: 0 0 8px;"><strong>Subject:</strong> ${subject}</p>
+          <p style="color: #374151; margin: 0 0 8px;"><strong>Tutor:</strong> ${tutorName}</p>
           <p style="color: #374151; margin: 0 0 8px;"><strong>Date:</strong> ${dateStr}</p>
           <p style="color: #374151; margin: 0;"><strong>Time:</strong> ${timeStr}</p>${ZOOM_LINK ? `
           <p style="color: #374151; margin: 8px 0 0;"><strong>Zoom:</strong> <a href="${ZOOM_LINK}" style="color: #2563eb; text-decoration: underline;">${ZOOM_LINK}</a></p>` : ""}
@@ -153,7 +156,7 @@ export async function sendBookingConfirmationEmail({
     </div>
   `;
 
-  const textBody = `Session Booked!\n\nHi ${studentName},\n\nYour tutoring session has been confirmed:\n\nSubject: ${subject}\nDate: ${dateStr}\nTime: ${timeStr}${ZOOM_LINK ? `\nZoom Link: ${ZOOM_LINK}` : ""}\n\nYou can manage your bookings on the tutoring portal.`;
+  const textBody = `Session Booked!\n\nHi ${studentName},\n\nYour tutoring session has been confirmed:\n\nSubject: ${subject}\nTutor: ${tutorName}\nDate: ${dateStr}\nTime: ${timeStr}${ZOOM_LINK ? `\nZoom Link: ${ZOOM_LINK}` : ""}\n\nYou can manage your bookings on the tutoring portal.`;
 
   await sesClient.send(
     new SendEmailCommand({
@@ -178,11 +181,13 @@ export async function sendBookingCancellationEmail({
   studentName,
   scheduledAt,
   subject,
+  tutorName,
 }: {
   to: string[];
   studentName: string;
   scheduledAt: string;
   subject: string;
+  tutorName: string;
 }): Promise<void> {
   const fromEmail = awsConfig.ses.fromEmail;
   if (!fromEmail) {
@@ -209,6 +214,7 @@ export async function sendBookingCancellationEmail({
         <p style="color: #6b7280; margin: 0 0 20px;">The following tutoring session has been cancelled:</p>
         <div style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 20px;">
           <p style="color: #374151; margin: 0 0 8px;"><strong>Subject:</strong> ${subject}</p>
+          <p style="color: #374151; margin: 0 0 8px;"><strong>Tutor:</strong> ${tutorName}</p>
           <p style="color: #374151; margin: 0 0 8px;"><strong>Date:</strong> ${dateStr}</p>
           <p style="color: #374151; margin: 0;"><strong>Time:</strong> ${timeStr}</p>
         </div>
@@ -217,7 +223,7 @@ export async function sendBookingCancellationEmail({
     </div>
   `;
 
-  const textBody = `Session Cancelled\n\nHi ${studentName},\n\nThe following tutoring session has been cancelled:\n\nSubject: ${subject}\nDate: ${dateStr}\nTime: ${timeStr}\n\nYou can book a new session on the tutoring portal.`;
+  const textBody = `Session Cancelled\n\nHi ${studentName},\n\nThe following tutoring session has been cancelled:\n\nSubject: ${subject}\nTutor: ${tutorName}\nDate: ${dateStr}\nTime: ${timeStr}\n\nYou can book a new session on the tutoring portal.`;
 
   await sesClient.send(
     new SendEmailCommand({
