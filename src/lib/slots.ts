@@ -159,6 +159,27 @@ export interface BusyInterval {
 }
 
 /**
+ * The UTC instant range covering one tutor-local calendar day range,
+ * start-of-day through end-of-day — for querying an external API (e.g.
+ * Google freebusy) by date range without missing evening-hour events on
+ * the boundary days. Naively appending "T00:00:00.000Z"/"T23:59:59.999Z"
+ * to the date strings looks equivalent but silently misses events after
+ * ~5pm Pacific on the end date, since it treats UTC midnight as local
+ * midnight — causing a slot to show as available when the founder is
+ * actually busy then, and the booking to fail at confirm time instead.
+ */
+export function zonedDateRangeToUtcISO(
+  startDate: string,
+  endDate: string,
+  timezone: string = DEFAULT_TIMEZONE
+): { startISO: string; endISO: string } {
+  return {
+    startISO: fromZonedTime(`${startDate}T00:00:00`, timezone).toISOString(),
+    endISO: fromZonedTime(`${endDate}T23:59:59.999`, timezone).toISOString(),
+  };
+}
+
+/**
  * Convert UTC busy intervals (e.g. from a Google freebusy check) into
  * tutor-local HH:MM blocked ranges for one date, expanded by a buffer on
  * each side, and subtract them from the base windows — the same shape and
