@@ -4,6 +4,7 @@ import {
 } from "@aws-sdk/client-secrets-manager";
 import { awsConfig } from "./aws-config";
 import type { BusyInterval } from "./slots";
+import type { GoogleAccount } from "./calendar-accounts";
 
 const secretsClient = new SecretsManagerClient({
   region: awsConfig.region,
@@ -40,30 +41,38 @@ class GoogleApiError extends Error {
 // session-reminder Lambda: cheap for warm invocations, fine to lose on a
 // cold start or redeploy since the secret itself rarely changes.
 
-let secretCache: GoogleSecret | null | undefined;
+// One connected Google account per tutor ("founder" = Karsten, "second" =
+// Jason), each with its own secret and its own caches.
+const secretCache: Partial<Record<GoogleAccount, GoogleSecret | null>> = {};
 
-async function getGoogleSecret(): Promise<GoogleSecret | null> {
-  if (secretCache !== undefined) return secretCache;
-  try {
-    const result = await secretsClient.send(
-      new GetSecretValueCommand({ SecretId: awsConfig.google.secretName })
-    );
-    secretCache = result.SecretString ? (JSON.parse(result.SecretString) as GoogleSecret) : null;
-  } catch (error) {
-    console.error("Google Calendar secret not available:", (error as Error).name);
-    secretCache = null;
-  }
-  return secretCache;
+function secretNameFor(account: GoogleAccount): string {
+  return account === "founder" ? awsConfig.google.secretName : awsConfig.google.secondSecretName;
 }
 
-let accessTokenCache: { token: string; expiresAt: number } | null = null;
+async function getGoogleSecret(account: GoogleAccount): Promise<GoogleSecret | null> {
+  if (secretCache[account] !== undefined) return secretCache[account] ?? null;
+  try {
+    const result = await secretsClient.send(
+      new GetSecretValueCommand({ SecretId: secretNameFor(account) })
+    );
+    secretCache[account] = result.SecretString ? (JSON.parse(result.SecretString) as GoogleSecret) : null;
+  } catch (error) {
+    // A missing second-tutor secret just means that calendar isn't connected yet.
+    console.error(`Google Calendar secret (${account}) not available:`, (error as Error).name);
+    secretCache[account] = null;
+  }
+  return secretCache[account] ?? null;
+}
 
-async function getAccessToken(): Promise<string> {
-  if (accessTokenCache && Date.now() < accessTokenCache.expiresAt - 5 * 60_000) {
-    return accessTokenCache.token;
+const accessTokenCache: Partial<Record<GoogleAccount, { token: string; expiresAt: number }>> = {};
+
+async function getAccessToken(account: GoogleAccount): Promise<string> {
+  const cached = accessTokenCache[account];
+  if (cached && Date.now() < cached.expiresAt - 5 * 60_000) {
+    return cached.token;
   }
 
-  const secret = await getGoogleSecret();
+  const secret = await getGoogleSecret(account);
   if (!secret) throw new GoogleAuthError("Google Calendar secret is not configured");
 
   const response = await fetch(TOKEN_URL, {
@@ -86,17 +95,17 @@ async function getAccessToken(): Promise<string> {
     throw new Error(`Google token exchange failed: ${response.status} ${body.error || ""}`);
   }
 
-  accessTokenCache = {
+  accessTokenCache[account] = {
     token: body.access_token,
     expiresAt: Date.now() + body.expires_in * 1000,
   };
-  return accessTokenCache.token;
+  return body.access_token;
 }
 
 // ── Request helpers ──
 
-async function googleFetch(url: string, init: RequestInit): Promise<any> {
-  const accessToken = await getAccessToken();
+async function googleFetch(account: GoogleAccount, url: string, init: RequestInit): Promise<any> {
+  const accessToken = await getAccessToken(account);
   const response = await fetch(url, {
     ...init,
     headers: { ...(init.headers || {}), Authorization: `Bearer ${accessToken}` },
@@ -138,20 +147,21 @@ function logGoogleError(context: string, error: unknown): void {
 // Enumerates the account's calendars at request time rather than hardcoding
 // names, so it self-updates as calendars are added/removed post-migration.
 
-let calendarListCache: { at: number; ids: string[] } | null = null;
+const calendarListCache: Partial<Record<GoogleAccount, { at: number; ids: string[] }>> = {};
 const CALENDAR_LIST_CACHE_MS = 15 * 60_000;
 
-async function getFreebusyCalendarIds(tutoringCalendarId: string): Promise<string[]> {
-  if (calendarListCache && Date.now() - calendarListCache.at < CALENDAR_LIST_CACHE_MS) {
-    return calendarListCache.ids;
+async function getFreebusyCalendarIds(account: GoogleAccount, tutoringCalendarId: string): Promise<string[]> {
+  const cached = calendarListCache[account];
+  if (cached && Date.now() - cached.at < CALENDAR_LIST_CACHE_MS) {
+    return cached.ids;
   }
   const result = await withBackoff(() =>
-    googleFetch(`${CALENDAR_API}/users/me/calendarList?maxResults=250`, { method: "GET" })
+    googleFetch(account, `${CALENDAR_API}/users/me/calendarList?maxResults=250`, { method: "GET" })
   );
   const ids = ((result?.items || []) as { id: string }[])
     .map((c) => c.id)
     .filter((id) => id !== tutoringCalendarId);
-  calendarListCache = { at: Date.now(), ids };
+  calendarListCache[account] = { at: Date.now(), ids };
   return ids;
 }
 
@@ -170,19 +180,20 @@ async function getFreebusyCalendarIds(tutoringCalendarId: string): Promise<strin
  *    failure" case the whole feature exists to prevent: Google *should* be
  *    reachable and isn't, right now.
  */
-export async function getFounderBusyIntervals(
+export async function getBusyIntervals(
+  account: GoogleAccount,
   timeMinISO: string,
   timeMaxISO: string
 ): Promise<BusyInterval[] | null> {
-  const secret = await getGoogleSecret();
+  const secret = await getGoogleSecret(account);
   if (!secret) return [];
 
   try {
-    const calendarIds = await getFreebusyCalendarIds(secret.tutoring_calendar_id);
+    const calendarIds = await getFreebusyCalendarIds(account, secret.tutoring_calendar_id);
     if (calendarIds.length === 0) return [];
 
     const result = await withBackoff(() =>
-      googleFetch(`${CALENDAR_API}/freeBusy`, {
+      googleFetch(account, `${CALENDAR_API}/freeBusy`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -201,8 +212,30 @@ export async function getFounderBusyIntervals(
     }
     return intervals;
   } catch (error) {
-    logGoogleError("Google freebusy check failed", error);
+    logGoogleError(`Google freebusy check failed (${account})`, error);
     return null;
+  }
+}
+
+export function getFounderBusyIntervals(
+  timeMinISO: string,
+  timeMaxISO: string
+): Promise<BusyInterval[] | null> {
+  return getBusyIntervals("founder", timeMinISO, timeMaxISO);
+}
+
+export type CalendarHealth = "not_configured" | "ok" | "needs_reconnect";
+
+/** Whether this tutor's calendar is connected and its token still works. */
+export async function getCalendarHealth(account: GoogleAccount): Promise<CalendarHealth> {
+  const secret = await getGoogleSecret(account);
+  if (!secret) return "not_configured";
+  try {
+    await getAccessToken(account);
+    return "ok";
+  } catch (error) {
+    logGoogleError(`Google calendar health check failed (${account})`, error);
+    return "needs_reconnect";
   }
 }
 
@@ -226,8 +259,11 @@ export interface InsertEventInput {
 }
 
 /** Returns the Google event id on success (including "already existed"), or null if the write couldn't be made. */
-export async function insertTutoringEvent(input: InsertEventInput): Promise<string | null> {
-  const secret = await getGoogleSecret();
+export async function insertTutoringEvent(
+  input: InsertEventInput,
+  account: GoogleAccount = "founder"
+): Promise<string | null> {
+  const secret = await getGoogleSecret(account);
   if (!secret) return null;
 
   const eventId = googleEventIdFor(input.bookingId);
@@ -244,6 +280,7 @@ export async function insertTutoringEvent(input: InsertEventInput): Promise<stri
   try {
     await withBackoff(() =>
       googleFetch(
+        account,
         `${CALENDAR_API}/calendars/${encodeURIComponent(secret.tutoring_calendar_id)}/events?sendUpdates=all`,
         { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
       )
@@ -260,13 +297,17 @@ export async function insertTutoringEvent(input: InsertEventInput): Promise<stri
 }
 
 /** Cancellation/reschedule. 404/410 (already gone) count as success. */
-export async function deleteTutoringEvent(eventId: string): Promise<boolean> {
-  const secret = await getGoogleSecret();
+export async function deleteTutoringEvent(
+  eventId: string,
+  account: GoogleAccount = "founder"
+): Promise<boolean> {
+  const secret = await getGoogleSecret(account);
   if (!secret) return false;
 
   try {
     await withBackoff(() =>
       googleFetch(
+        account,
         `${CALENDAR_API}/calendars/${encodeURIComponent(secret.tutoring_calendar_id)}/events/${eventId}?sendUpdates=all`,
         { method: "DELETE" }
       )

@@ -10,10 +10,11 @@ import {
   generateTimeSlots,
   filterBookedSlots,
   filterPastSlots,
-  subtractBusyIntervals,
   zonedDateRangeToUtcISO,
 } from "@/lib/slots";
-import { getFounderBusyIntervals } from "@/lib/google-calendar";
+import { getBusyIntervals } from "@/lib/google-calendar";
+import { googleAccountForTutor, failurePolicyFor, applyBusyCheck } from "@/lib/calendar-accounts";
+import type { BusyInterval } from "@/lib/slots";
 import { awsConfig } from "@/lib/aws-config";
 import { assignTutorsToSlots } from "@/lib/booking-assignment";
 import { addDays } from "date-fns";
@@ -80,10 +81,19 @@ export async function GET(request: NextRequest) {
     // first, so index 0 is the founder, same convention /api/bookings uses.
     // If the check fails, treat him as busy the whole window rather than
     // silently offering slots during something the check couldn't see.
-    const founderSub = tutors[0].sub;
-    const founderBusy = await getFounderBusyIntervals(
-      requestedRange.startISO,
-      requestedRange.endISO
+    // Each tutor with a connected Google account gets the same check; if one
+    // can't be read the founder fails closed and the second tutor fails open
+    // (see failurePolicyFor).
+    const busyBySub = new Map<string, BusyInterval[] | null>();
+    await Promise.all(
+      tutors.map(async (tutor) => {
+        const account = googleAccountForTutor(tutor.sub, tutors);
+        if (!account) return;
+        busyBySub.set(
+          tutor.sub,
+          await getBusyIntervals(account, requestedRange.startISO, requestedRange.endISO)
+        );
+      })
     );
 
     // Generate date strings for each day in range (timezone-aware)
@@ -113,16 +123,16 @@ export async function GET(request: NextRequest) {
           t.overrides,
           TUTOR_TIMEZONE
         );
-        if (t.tutorSub === founderSub) {
-          windows = founderBusy
-            ? subtractBusyIntervals(
-                windows,
-                dateStr,
-                founderBusy,
-                TUTOR_TIMEZONE,
-                awsConfig.google.bufferMinutes
-              )
-            : [];
+        const account = googleAccountForTutor(t.tutorSub, tutors);
+        if (account) {
+          windows = applyBusyCheck(
+            windows,
+            dateStr,
+            busyBySub.get(t.tutorSub) ?? null,
+            failurePolicyFor(account),
+            TUTOR_TIMEZONE,
+            awsConfig.google.bufferMinutes
+          );
         }
         const daySlots = generateTimeSlots(dateStr, windows, 60, TUTOR_TIMEZONE);
         const bookedTimesForTutor = bookedSessions

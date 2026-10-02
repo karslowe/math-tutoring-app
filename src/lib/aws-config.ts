@@ -26,6 +26,9 @@ export const awsConfig = {
   tutorEmail: process.env.TUTOR_EMAIL || "",
   google: {
     secretName: process.env.GOOGLE_CALENDAR_SECRET_NAME || "klmathprep/google-calendar",
+    // The second tutor's own Google account; unset until he connects it.
+    secondSecretName:
+      process.env.GOOGLE_CALENDAR_SECRET_NAME_SECOND || "klmathprep/google-calendar-jason",
     bufferMinutes: 15,
   },
 };

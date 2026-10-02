@@ -18,22 +18,23 @@ import {
   getScheduledSessionsByDateRange,
   decrementFreeSessionCredit,
   updateSessionGoogleEvent,
+  updateSessionTutorGoogleEvent,
   TutoringSession,
 } from "@/lib/dynamodb";
 import {
   getAvailabilityForDate,
   generateTimeSlots,
   filterBookedSlots,
-  subtractBusyIntervals,
   zonedDateRangeToUtcISO,
 } from "@/lib/slots";
 import { chooseTutor, resolveRequestedTutor } from "@/lib/booking-assignment";
 import { sessionLabel } from "@/lib/session-label";
 import {
-  getFounderBusyIntervals,
+  getBusyIntervals,
   insertTutoringEvent,
   deleteTutoringEvent,
 } from "@/lib/google-calendar";
+import { googleAccountForTutor, failurePolicyFor, applyBusyCheck } from "@/lib/calendar-accounts";
 import { awsConfig } from "@/lib/aws-config";
 import {
   sendBookingConfirmationEmail,
@@ -56,9 +57,6 @@ async function getFreeTutorSubs(
   tutors: TutorIdentity[]
 ): Promise<Set<string>> {
   const dateStr = formatInTimeZone(new Date(scheduledAt), TUTOR_TIMEZONE, "yyyy-MM-dd");
-  // `tutors` is oldest-account-first (listTutors()); index 0 is the founder,
-  // same convention chooseTutor() below uses.
-  const founderSub = tutors[0]?.sub;
   const free = new Set<string>();
 
   await Promise.all(
@@ -85,17 +83,17 @@ async function getFreeTutorSubs(
       // even though the listing had already accounted for it. Fail
       // closed: if the check can't be made, treat him as unavailable the
       // whole day.
-      if (tutor.sub === founderSub) {
-        const busy = await getFounderBusyIntervals(dayRange.startISO, dayRange.endISO);
-        windows = busy
-          ? subtractBusyIntervals(
-              windows,
-              dateStr,
-              busy,
-              TUTOR_TIMEZONE,
-              awsConfig.google.bufferMinutes
-            )
-          : [];
+      const account = googleAccountForTutor(tutor.sub, tutors);
+      if (account) {
+        const busy = await getBusyIntervals(account, dayRange.startISO, dayRange.endISO);
+        windows = applyBusyCheck(
+          windows,
+          dateStr,
+          busy,
+          failurePolicyFor(account),
+          TUTOR_TIMEZONE,
+          awsConfig.google.bufferMinutes
+        );
       }
 
       const daySlots = generateTimeSlots(dateStr, windows, 60, TUTOR_TIMEZONE);
@@ -309,6 +307,33 @@ export async function POST(request: NextRequest) {
       console.error(`Failed to push booking ${session.id} to Google Calendar:`, calendarError);
     }
 
+    // A session taught by the second tutor also goes on his own calendar
+    // (the founder's Tutoring calendar above stays the whole-business view).
+    // No attendee here: the student is already invited from the event above,
+    // so inviting them again would send a duplicate. Non-blocking.
+    if (assignedTutor && googleAccountForTutor(assignedTutor.sub, tutors) === "second") {
+      try {
+        const startDate = new Date(session.scheduledAt);
+        const endDate = new Date(startDate.getTime() + session.duration * 60_000);
+        const tutorEventId = await insertTutoringEvent(
+          {
+            bookingId: session.id,
+            summary: `${sessionLabel(session.subject, assignedTutor.name || assignedTutor.email)} (${user.email.split("@")[0]})`,
+            description: `Tutor: ${tutorName}\nBooking ID: ${session.id}\nStudent: ${user.email}`,
+            startISO: startDate.toISOString(),
+            endISO: endDate.toISOString(),
+          },
+          "second"
+        );
+        await updateSessionTutorGoogleEvent(session.id, {
+          eventId: tutorEventId || undefined,
+          status: tutorEventId ? "synced" : "failed",
+        });
+      } catch (calendarError) {
+        console.error(`Failed to push booking ${session.id} to the tutor's own calendar:`, calendarError);
+      }
+    }
+
     return NextResponse.json({ session }, { status: 201 });
   } catch (error: any) {
     // TransactWriteCommand fails with TransactionCanceledException if slot is taken
@@ -374,6 +399,18 @@ export async function DELETE(request: NextRequest) {
     }
 
     await cancelBooking(sessionId, session.tutorSub, session.scheduledAt);
+
+    // Remove the event from the tutor's own calendar too, if it was pushed
+    // there (non-blocking).
+    if (session.tutorGoogleEventId) {
+      try {
+        const tutors = await listTutors();
+        const account = googleAccountForTutor(session.tutorSub, tutors);
+        if (account) await deleteTutoringEvent(session.tutorGoogleEventId, account);
+      } catch (calendarError) {
+        console.error(`Failed to delete tutor-calendar event for booking ${sessionId}:`, calendarError);
+      }
+    }
 
     // Remove the event from the founder's Tutoring calendar (non-blocking).
     if (session.googleEventId) {

@@ -57,6 +57,10 @@ export interface TutoringSession {
   createdAt: string;
   googleEventId?: string;
   googleEventStatus?: "synced" | "failed";
+  // The event on the teaching tutor's own calendar (the second tutor's); the
+  // googleEventId above is always the founder's shared Tutoring calendar.
+  tutorGoogleEventId?: string;
+  tutorGoogleEventStatus?: "synced" | "failed";
   // The actual worked-through material from the session (worksheets, scans,
   // etc.), stored in S3 and linked here — distinct from the general-purpose
   // per-student "completed notes" upload, which isn't tied to any one
@@ -181,6 +185,23 @@ export async function updateSessionGoogleEvent(
       ExpressionAttributeValues: {
         ":status": update.googleEventStatus,
         ...(update.googleEventId ? { ":eventId": update.googleEventId } : {}),
+      },
+    })
+  );
+}
+
+export async function updateSessionTutorGoogleEvent(
+  id: string,
+  update: { eventId?: string; status: "synced" | "failed" }
+): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: awsConfig.dynamodb.sessionsTable,
+      Key: { id },
+      UpdateExpression: "SET tutorGoogleEventStatus = :status" + (update.eventId ? ", tutorGoogleEventId = :eventId" : ""),
+      ExpressionAttributeValues: {
+        ":status": update.status,
+        ...(update.eventId ? { ":eventId": update.eventId } : {}),
       },
     })
   );

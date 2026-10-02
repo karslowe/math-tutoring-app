@@ -62,6 +62,35 @@ function TutorScheduleContent() {
     "availability" | "blocks" | "sessions" | "calendar"
   >("availability");
   const [sessions, setSessions] = useState<BookedSession[]>([]);
+  // Tutors whose Google Calendar token has died; shown as a warning so a
+  // broken connection is noticed instead of silently hiding or double-booking time.
+  const [brokenCalendars, setBrokenCalendars] = useState<string[]>([]);
+  useEffect(() => {
+    async function loadCalendarHealth() {
+      try {
+        const token = await getToken();
+        const idToken = await getIdToken();
+        if (!token) return;
+        const res = await fetch("/api/tutor/google-status", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...(idToken ? { "x-id-token": idToken } : {}),
+          },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        setBrokenCalendars(
+          (data.calendars || [])
+            .filter((c: { status: string }) => c.status === "needs_reconnect")
+            .map((c: { tutor: string }) => c.tutor)
+        );
+      } catch {
+        // Health is advisory; never block the page on it.
+      }
+    }
+    loadCalendarHealth();
+  }, [getToken, getIdToken]);
+
   // Re-evaluated every minute so a session drops off the list when it ends
   // without needing a page refresh.
   const [now, setNow] = useState(() => new Date());
@@ -171,6 +200,15 @@ function TutorScheduleContent() {
         <h1 className="text-2xl font-bold text-gray-900 mb-4">
           Schedule Management
         </h1>
+
+        {brokenCalendars.length > 0 && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {brokenCalendars.join(" and ")}&apos;s Google Calendar needs
+            reconnecting. Until it&apos;s fixed, new sessions won&apos;t sync to it
+            and its busy times aren&apos;t being checked, so bookings may be
+            affected.
+          </div>
+        )}
 
         {SECOND_TUTOR_SUB && (
           <div className="flex items-center gap-2 mb-6">

@@ -15,9 +15,14 @@
 // Usage:
 //   node scripts/google-oauth-authorize.mjs \
 //     --client-id=<id> --client-secret=<secret> \
-//     --tutoring-calendar-id=<calendar id on karslowe0@gmail.com> \
+//     --tutoring-calendar-id=<calendar id on the account being authorized> \
+//     [--google-account=karslowe0@gmail.com] \
 //     [--redirect-uri=http://localhost:8787/callback] [--secret-name=klmathprep/google-calendar] \
 //     [--execute]
+//
+// For the second tutor, pass his own Gmail, his "KL Math Tutoring" calendar
+// id, and --secret-name=klmathprep/google-calendar-jason. The OAuth client
+// is the same one; only the account that signs in differs.
 //
 // The redirect_uri passed here must exactly match one registered on the
 // OAuth client in Google Cloud Console.
@@ -41,6 +46,7 @@ const execute = args.execute === true;
 const clientId = args["client-id"];
 const clientSecret = args["client-secret"];
 const tutoringCalendarId = args["tutoring-calendar-id"];
+const googleAccount = args["google-account"] || "karslowe0@gmail.com";
 const redirectUri = args["redirect-uri"] || "http://localhost:8787/callback";
 const secretName = args["secret-name"] || "klmathprep/google-calendar";
 
@@ -65,6 +71,7 @@ authUrl.searchParams.set("response_type", "code");
 authUrl.searchParams.set("scope", SCOPES);
 authUrl.searchParams.set("access_type", "offline");
 authUrl.searchParams.set("prompt", "consent");
+authUrl.searchParams.set("login_hint", googleAccount);
 
 async function waitForCode(port, pathname) {
   return new Promise((resolve, reject) => {
@@ -88,7 +95,7 @@ async function waitForCode(port, pathname) {
       else reject(new Error("No code or error in callback"));
     });
     server.listen(port, () => {
-      console.log(`\nOpen this URL in a browser signed in as karslowe0@gmail.com:\n`);
+      console.log(`\nOpen this URL in a browser signed in as ${googleAccount}:\n`);
       console.log(authUrl.toString());
       console.log(`\nWaiting for the redirect to ${redirectUri} ...`);
     });
@@ -130,7 +137,7 @@ async function main() {
   const refreshToken = await exchangeCode(code);
 
   const secretPayload = {
-    google_account: "karslowe0@gmail.com",
+    google_account: googleAccount,
     client_id: clientId,
     client_secret: clientSecret,
     refresh_token: refreshToken,
