@@ -9,14 +9,10 @@ import TutorHoursCalendar from "@/components/TutorHoursCalendar";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { withTutorSub } from "@/lib/tutor-query";
-import {
-  format,
-  parseISO,
-  startOfWeek,
-  endOfWeek,
-  addWeeks,
-  subWeeks,
-} from "date-fns";
+import { addYears, format, parseISO } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
+import { upcomingSessions, groupSessionsByDay } from "@/lib/upcoming-sessions";
+import { sessionLabel } from "@/lib/session-label";
 
 // ADR-0009: shared-login two-tutor scheduling. Unset by default, which makes
 // the "acting as" switcher below disappear entirely and this page behave
@@ -33,6 +29,7 @@ interface BookedSession {
   scheduledAt: string;
   subject: string;
   duration: number;
+  status: string;
   paidWithCredit?: boolean;
 }
 
@@ -65,6 +62,14 @@ function TutorScheduleContent() {
     "availability" | "blocks" | "sessions" | "calendar"
   >("availability");
   const [sessions, setSessions] = useState<BookedSession[]>([]);
+  // Re-evaluated every minute so a session drops off the list when it ends
+  // without needing a page refresh.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const upcoming = upcomingSessions(sessions, now);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [meetingRoomUrl, setMeetingRoomUrl] = useState("");
   const [savingRoom, setSavingRoom] = useState(false);
@@ -113,9 +118,7 @@ function TutorScheduleContent() {
       setTimeout(() => setRoomMessage(null), 3000);
     }
   }
-  const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
 
-  const weekEnd = endOfWeek(weekStart);
 
   useEffect(() => {
     if (activeTab !== "sessions") return;
@@ -127,8 +130,10 @@ function TutorScheduleContent() {
 
       setLoadingSessions(true);
       try {
-        const start = format(weekStart, "yyyy-MM-dd");
-        const end = format(endOfWeek(weekStart), "yyyy-MM-dd");
+        // Everything from today onward; sessions that have already ended
+        // are filtered out below, so one running right now stays visible.
+        const start = format(new Date(), "yyyy-MM-dd");
+        const end = format(addYears(new Date(), 1), "yyyy-MM-dd");
 
         const res = await fetch(
           `/api/tutor/bookings?startDate=${start}&endDate=${end}`,
@@ -149,7 +154,7 @@ function TutorScheduleContent() {
     }
 
     loadSessions();
-  }, [activeTab, weekStart, getToken, getIdToken]);
+  }, [activeTab, getToken, getIdToken]);
 
   return (
     <ProtectedRoute>
@@ -274,49 +279,6 @@ function TutorScheduleContent() {
 
         {activeTab === "sessions" && (
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <button
-                onClick={() => setWeekStart(subWeeks(weekStart, 1))}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <svg
-                  className="w-5 h-5 text-gray-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 19l-7-7 7-7"
-                  />
-                </svg>
-              </button>
-              <h2 className="text-md font-semibold text-gray-900">
-                {format(weekStart, "MMM d")} –{" "}
-                {format(weekEnd, "MMM d, yyyy")}
-              </h2>
-              <button
-                onClick={() => setWeekStart(addWeeks(weekStart, 1))}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <svg
-                  className="w-5 h-5 text-gray-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </button>
-            </div>
-
             {loadingSessions ? (
               <div className="space-y-3">
                 {[...Array(3)].map((_, i) => (
@@ -326,60 +288,66 @@ function TutorScheduleContent() {
                   />
                 ))}
               </div>
-            ) : sessions.length === 0 ? (
+            ) : upcoming.length === 0 ? (
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center">
                 <p className="text-gray-500 text-sm">
-                  No sessions booked for this week.
+                  No upcoming sessions.
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {sessions
-                  .sort(
-                    (a, b) =>
-                      new Date(a.scheduledAt).getTime() -
-                      new Date(b.scheduledAt).getTime()
-                  )
-                  .map((session) => (
-                    <div
-                      key={session.id}
-                      className="bg-white rounded-xl shadow-sm border border-gray-200 p-4"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium text-gray-900">
-                            {session.subject}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {format(
-                              parseISO(session.scheduledAt),
-                              "EEEE, MMMM d 'at' h:mm a"
-                            )}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-medium text-gray-700">
-                            {session.studentName || session.studentEmail}
-                          </p>
-                          <div className="flex items-center gap-1.5 justify-end">
-                            {session.tutorName && (
-                              <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                                {session.tutorName}
-                              </span>
-                            )}
-                            <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-                              Booked
-                            </span>
-                            {session.paidWithCredit && (
-                              <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
-                                Free
-                              </span>
-                            )}
+              <div className="space-y-6">
+                {groupSessionsByDay(upcoming, "America/Los_Angeles").map(
+                  (group) => (
+                    <div key={group.dateKey}>
+                      <h2 className="text-sm font-semibold text-gray-500 mb-2">
+                        {group.label}
+                      </h2>
+                      <div className="space-y-3">
+                        {group.sessions.map((session) => (
+                          <div
+                            key={session.id}
+                            className="bg-white rounded-xl shadow-sm border border-gray-200 p-4"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium text-gray-900">
+                                  {sessionLabel(
+                                    session.subject,
+                                    session.tutorName
+                                  )}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  {formatInTimeZone(
+                                    parseISO(session.scheduledAt),
+                                    "America/Los_Angeles",
+                                    "h:mm a"
+                                  )}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm font-medium text-gray-700">
+                                  {session.studentName || session.studentEmail}
+                                </p>
+                                <div className="flex items-center gap-1.5 justify-end">
+                                  {session.tutorName && (
+                                    <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                                      {session.tutorName}
+                                    </span>
+                                  )}
+                                  {session.paidWithCredit && (
+                                    <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
+                                      Free
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </div>
+                        ))}
                       </div>
                     </div>
-                  ))}
+                  )
+                )}
               </div>
             )}
           </div>

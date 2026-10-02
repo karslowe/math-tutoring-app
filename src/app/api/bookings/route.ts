@@ -28,6 +28,7 @@ import {
   zonedDateRangeToUtcISO,
 } from "@/lib/slots";
 import { chooseTutor } from "@/lib/booking-assignment";
+import { sessionLabel } from "@/lib/session-label";
 import {
   getFounderBusyIntervals,
   insertTutoringEvent,
@@ -274,7 +275,7 @@ export async function POST(request: NextRequest) {
       const endDate = new Date(startDate.getTime() + session.duration * 60_000);
       const eventId = await insertTutoringEvent({
         bookingId: session.id,
-        summary: `KLMathPrep: ${user.email.split("@")[0]} (${session.subject}) — ${tutorName}`,
+        summary: `${sessionLabel(session.subject, assignedTutor?.name || assignedTutor?.email)} (${user.email.split("@")[0]})`,
         description: `Tutor: ${tutorName}\nBooking ID: ${session.id}\nStudent: ${user.email}`,
         startISO: startDate.toISOString(),
         endISO: endDate.toISOString(),

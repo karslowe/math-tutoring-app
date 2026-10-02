@@ -111,7 +111,7 @@ export async function handler() {
           },
           Message: {
             Subject: {
-              Data: `Reminder: KL Math Prep Session in 1 Hour - ${formattedDate}`,
+              Data: `Reminder: ${session.subject || "Tutoring session"} with ${tutorName} in 1 Hour - ${formattedDate}`,
             },
             Body: {
               Html: {

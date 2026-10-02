@@ -119,11 +119,14 @@ export async function POST(request: NextRequest) {
       }
 
       if (recipients.length > 0) {
+        const tutors = await listTutors();
+        const sessionTutor = tutors.find((t) => t.sub === session.tutorSub);
         await sendSessionNoteEmail({
           to: recipients,
           subject: session.subject,
           notes: session.notes,
           studentName: studentEmail?.split("@")[0] || "Student",
+          tutorName: sessionTutor?.name || sessionTutor?.email,
         });
       }
     } catch (emailError: any) {

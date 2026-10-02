@@ -2,6 +2,7 @@ import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { formatInTimeZone } from "date-fns-tz";
 import { awsConfig } from "./aws-config";
 import { SECOND_TUTOR_EMAIL } from "./auth-helpers";
+import { sessionLabel } from "./session-label";
 
 const sesClient = new SESClient({
   region: awsConfig.region,
@@ -38,11 +39,13 @@ export async function sendSessionNoteEmail({
   subject,
   notes,
   studentName,
+  tutorName,
 }: {
   to: string[];
   subject: string;
   notes: string;
   studentName: string;
+  tutorName?: string;
 }): Promise<void> {
   const fromEmail = awsConfig.ses.fromEmail;
   if (!fromEmail) {
@@ -83,7 +86,7 @@ export async function sendSessionNoteEmail({
       },
       Message: {
         Subject: {
-          Data: `Session Notes: ${subject}`,
+          Data: `Session Notes: ${sessionLabel(subject, tutorName)}`,
           Charset: "UTF-8",
         },
         Body: {
@@ -163,7 +166,7 @@ export async function sendBookingConfirmationEmail({
       Source: fromEmail,
       Destination: { ToAddresses: validRecipients },
       Message: {
-        Subject: { Data: `Session Confirmed: ${subject} - ${dateStr}`, Charset: "UTF-8" },
+        Subject: { Data: `Session Confirmed: ${sessionLabel(subject, tutorName)} - ${dateStr}`, Charset: "UTF-8" },
         Body: {
           Html: { Data: htmlBody, Charset: "UTF-8" },
           Text: { Data: textBody, Charset: "UTF-8" },
@@ -230,7 +233,7 @@ export async function sendBookingCancellationEmail({
       Source: fromEmail,
       Destination: { ToAddresses: validRecipients },
       Message: {
-        Subject: { Data: `Session Cancelled: ${subject} - ${dateStr}`, Charset: "UTF-8" },
+        Subject: { Data: `Session Cancelled: ${sessionLabel(subject, tutorName)} - ${dateStr}`, Charset: "UTF-8" },
         Body: {
           Html: { Data: htmlBody, Charset: "UTF-8" },
           Text: { Data: textBody, Charset: "UTF-8" },
