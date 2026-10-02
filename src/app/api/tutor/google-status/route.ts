@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireTutor, listTutors } from "@/lib/auth-helpers";
+import { requireTutor, listTutors, SECOND_TUTOR_SUB, SECOND_TUTOR_NAME } from "@/lib/auth-helpers";
 import { getCalendarHealth } from "@/lib/google-calendar";
 
 // GET - Is each tutor's Google Calendar connected and still working? Drives
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     calendars: [
       { tutor: tutors[0]?.name || "Founder", status: founder },
-      ...(tutors[1] ? [{ tutor: tutors[1].name || tutors[1].email, status: second }] : []),
+      ...(SECOND_TUTOR_SUB ? [{ tutor: SECOND_TUTOR_NAME, status: second }] : []),
     ],
   });
 }

@@ -4,19 +4,22 @@ import type { BusyInterval } from "./slots";
 import type { AvailabilitySlot } from "./dynamodb";
 
 /**
- * Which connected Google account a tutor's calendar lives on. `tutors` is
- * oldest-account-first (listTutors()), so index 0 is the founder — the same
- * convention chooseTutor() uses — and index 1 is the second tutor. Anyone
- * else has no calendar connected.
+ * Which connected Google account a tutor's calendar lives on. Index 0 of
+ * `tutors` is the founder (oldest account first, the convention chooseTutor()
+ * uses). The second tutor is identified by his configured sub, NOT by
+ * position: listTutors() appends him after every real Cognito tutor, and
+ * that group also holds a test account, so he is not at index 1. Anyone else
+ * has no calendar connected.
  */
 export type GoogleAccount = "founder" | "second";
 
 export function googleAccountForTutor(
   tutorSub: string,
-  tutors: TutorIdentity[]
+  tutors: TutorIdentity[],
+  secondTutorSub: string
 ): GoogleAccount | null {
   if (tutors[0]?.sub === tutorSub) return "founder";
-  if (tutors[1]?.sub === tutorSub) return "second";
+  if (secondTutorSub && tutorSub === secondTutorSub) return "second";
   return null;
 }
 

@@ -5,20 +5,26 @@ import {
   applyBusyCheck,
 } from "../calendar-accounts";
 
+// Matches production: the Cognito "tutors" group holds Karsten plus a test
+// account, and Jason (the configured second tutor) is appended after them —
+// so he is NOT at index 1.
 const tutors = [
   { sub: "karsten", email: "k@x.com", name: "Karsten", createdAt: "2026-01-01" },
-  { sub: "jason", email: "j@x.com", name: "Jason", createdAt: "2026-02-01" },
-  { sub: "third", email: "t@x.com", name: "Third", createdAt: "2026-03-01" },
+  { sub: "studenttest2", email: "t@x.com", name: "studenttest2", createdAt: "2026-01-02" },
+  { sub: "jason", email: "j@x.com", name: "Jason", createdAt: "" },
 ];
 
 describe("googleAccountForTutor", () => {
-  it("maps the founder and the second tutor to their own accounts", () => {
-    expect(googleAccountForTutor("karsten", tutors)).toBe("founder");
-    expect(googleAccountForTutor("jason", tutors)).toBe("second");
+  it("maps the founder and the configured second tutor to their own accounts", () => {
+    expect(googleAccountForTutor("karsten", tutors, "jason")).toBe("founder");
+    expect(googleAccountForTutor("jason", tutors, "jason")).toBe("second");
   });
-  it("has no account for anyone else", () => {
-    expect(googleAccountForTutor("third", tutors)).toBeNull();
-    expect(googleAccountForTutor("nobody", tutors)).toBeNull();
+  it("gives nobody else an account, including a tutor sitting at index 1", () => {
+    expect(googleAccountForTutor("studenttest2", tutors, "jason")).toBeNull();
+    expect(googleAccountForTutor("nobody", tutors, "jason")).toBeNull();
+  });
+  it("has no second account when no second tutor is configured", () => {
+    expect(googleAccountForTutor("jason", tutors, "")).toBeNull();
   });
 });
 
@@ -56,5 +62,21 @@ describe("applyBusyCheck", () => {
 
   it("an empty busy list changes nothing", () => {
     expect(applyBusyCheck(windows, "2026-10-06", [], "closed", tz, 0)).toEqual(windows);
+  });
+
+  it("removes the real Oct 6 conflict (Capital Fitness, 4-6 PM PT) with the 15 min buffer", () => {
+    // Google reported Jason busy 2026-10-06T23:00:00Z -> 2026-10-07T01:00:00Z.
+    const out = applyBusyCheck(
+      [{ start: "12:00", end: "20:00" }],
+      "2026-10-06",
+      [{ start: "2026-10-06T23:00:00Z", end: "2026-10-07T01:00:00Z" }],
+      "open",
+      tz,
+      15
+    );
+    expect(out).toEqual([
+      { start: "12:00", end: "15:45" },
+      { start: "18:15", end: "20:00" },
+    ]);
   });
 });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractToken, verifyToken, listTutors } from "@/lib/auth-helpers";
+import { extractToken, verifyToken, listTutors, SECOND_TUTOR_SUB } from "@/lib/auth-helpers";
 import {
   getWeeklyAvailability,
   getDateOverrides,
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
     const busyBySub = new Map<string, BusyInterval[] | null>();
     await Promise.all(
       tutors.map(async (tutor) => {
-        const account = googleAccountForTutor(tutor.sub, tutors);
+        const account = googleAccountForTutor(tutor.sub, tutors, SECOND_TUTOR_SUB);
         if (!account) return;
         busyBySub.set(
           tutor.sub,
@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
           t.overrides,
           TUTOR_TIMEZONE
         );
-        const account = googleAccountForTutor(t.tutorSub, tutors);
+        const account = googleAccountForTutor(t.tutorSub, tutors, SECOND_TUTOR_SUB);
         if (account) {
           windows = applyBusyCheck(
             windows,

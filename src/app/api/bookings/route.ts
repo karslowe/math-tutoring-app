@@ -4,6 +4,7 @@ import {
   verifyToken,
   getHouseholdSub,
   listTutors,
+  SECOND_TUTOR_SUB,
   TutorIdentity,
 } from "@/lib/auth-helpers";
 import {
@@ -83,7 +84,7 @@ async function getFreeTutorSubs(
       // even though the listing had already accounted for it. Fail
       // closed: if the check can't be made, treat him as unavailable the
       // whole day.
-      const account = googleAccountForTutor(tutor.sub, tutors);
+      const account = googleAccountForTutor(tutor.sub, tutors, SECOND_TUTOR_SUB);
       if (account) {
         const busy = await getBusyIntervals(account, dayRange.startISO, dayRange.endISO);
         windows = applyBusyCheck(
@@ -311,7 +312,7 @@ export async function POST(request: NextRequest) {
     // (the founder's Tutoring calendar above stays the whole-business view).
     // No attendee here: the student is already invited from the event above,
     // so inviting them again would send a duplicate. Non-blocking.
-    if (assignedTutor && googleAccountForTutor(assignedTutor.sub, tutors) === "second") {
+    if (assignedTutor && googleAccountForTutor(assignedTutor.sub, tutors, SECOND_TUTOR_SUB) === "second") {
       try {
         const startDate = new Date(session.scheduledAt);
         const endDate = new Date(startDate.getTime() + session.duration * 60_000);
@@ -405,7 +406,7 @@ export async function DELETE(request: NextRequest) {
     if (session.tutorGoogleEventId) {
       try {
         const tutors = await listTutors();
-        const account = googleAccountForTutor(session.tutorSub, tutors);
+        const account = googleAccountForTutor(session.tutorSub, tutors, SECOND_TUTOR_SUB);
         if (account) await deleteTutoringEvent(session.tutorGoogleEventId, account);
       } catch (calendarError) {
         console.error(`Failed to delete tutor-calendar event for booking ${sessionId}:`, calendarError);
