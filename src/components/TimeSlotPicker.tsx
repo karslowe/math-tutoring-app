@@ -5,6 +5,7 @@ import { format, parseISO } from "date-fns";
 interface TimeSlotPickerProps {
   date: string; // YYYY-MM-DD
   availableSlots: string[]; // ISO datetime strings
+  tutorBySlot?: Record<string, { sub: string; name: string }>;
   selectedSlot: string | null;
   onSlotSelect: (slot: string) => void;
   loading?: boolean;
@@ -13,6 +14,7 @@ interface TimeSlotPickerProps {
 export default function TimeSlotPicker({
   date,
   availableSlots,
+  tutorBySlot = {},
   selectedSlot,
   onSlotSelect,
   loading = false,
@@ -67,7 +69,16 @@ export default function TimeSlotPicker({
                 }
               `}
             >
-              {format(time, "h:mm a")}
+              <span className="block">{format(time, "h:mm a")}</span>
+              {tutorBySlot[slot] && (
+                <span
+                  className={`block text-xs font-normal ${
+                    isSelected ? "text-blue-100" : "text-gray-500"
+                  }`}
+                >
+                  {tutorBySlot[slot].name}
+                </span>
+              )}
             </button>
           );
         })}

@@ -44,3 +44,43 @@ describe("chooseTutor", () => {
     expect(chooseTutor(candidates, tutors, second.sub)).toBe(second.sub);
   });
 });
+
+import { assignTutorsToSlots, resolveRequestedTutor } from "../booking-assignment";
+
+describe("assignTutorsToSlots", () => {
+  const tutors = [
+    { sub: "karsten", email: "k@x.com", name: "Karsten", createdAt: "2026-01-01" },
+    { sub: "jason", email: "j@x.com", name: "Jason", createdAt: "2026-02-01" },
+  ];
+
+  it("picks the founder when both are free, otherwise whoever is free", () => {
+    const free = new Map<string, Set<string>>([
+      ["10:00", new Set(["karsten", "jason"])],
+      ["11:00", new Set(["jason"])],
+      ["12:00", new Set(["karsten"])],
+    ]);
+    expect(assignTutorsToSlots(free, tutors)).toEqual({
+      "10:00": { sub: "karsten", name: "Karsten" },
+      "11:00": { sub: "jason", name: "Jason" },
+      "12:00": { sub: "karsten", name: "Karsten" },
+    });
+  });
+
+  it("omits a slot nobody is free for", () => {
+    const free = new Map<string, Set<string>>();
+    free.set("10:00", new Set<string>());
+    expect(assignTutorsToSlots(free, tutors)).toEqual({});
+  });
+});
+
+describe("resolveRequestedTutor", () => {
+  it("honors the tutor the student saw while that tutor is still free", () => {
+    expect(resolveRequestedTutor("jason", new Set(["karsten", "jason"]))).toEqual({
+      ok: true,
+      tutorSub: "jason",
+    });
+  });
+  it("refuses, rather than swapping tutors, once the shown tutor is taken", () => {
+    expect(resolveRequestedTutor("karsten", new Set(["jason"]))).toEqual({ ok: false });
+  });
+});

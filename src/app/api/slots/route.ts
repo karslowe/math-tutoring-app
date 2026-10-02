@@ -15,6 +15,7 @@ import {
 } from "@/lib/slots";
 import { getFounderBusyIntervals } from "@/lib/google-calendar";
 import { awsConfig } from "@/lib/aws-config";
+import { assignTutorsToSlots } from "@/lib/booking-assignment";
 import { addDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 
@@ -89,7 +90,11 @@ export async function GET(request: NextRequest) {
     const start = new Date(startDate + "T12:00:00Z"); // noon UTC to avoid date boundary issues
     const end = new Date(endDate + "T12:00:00Z");
 
-    const allSlots: { date: string; slots: string[] }[] = [];
+    const allSlots: {
+      date: string;
+      slots: string[];
+      tutors: Record<string, { sub: string; name: string }>;
+    }[] = [];
 
     let current = start;
     while (current <= end) {
@@ -99,6 +104,8 @@ export async function GET(request: NextRequest) {
       // A time is bookable if AT LEAST ONE tutor is free at that time —
       // students never choose a tutor, so slots are a union across tutors.
       const dayFreeTimes = new Set<string>();
+      // Which tutors are free at each time, so each slot can be labeled.
+      const freeBySlot = new Map<string, Set<string>>();
       for (const t of tutorData) {
         let windows = getAvailabilityForDate(
           dateStr,
@@ -122,13 +129,21 @@ export async function GET(request: NextRequest) {
           .filter((s) => s.tutorSub === t.tutorSub)
           .map((s) => s.scheduledAt);
         const availableSlots = filterBookedSlots(daySlots, bookedTimesForTutor);
-        for (const slot of availableSlots) dayFreeTimes.add(slot);
+        for (const slot of availableSlots) {
+          dayFreeTimes.add(slot);
+          if (!freeBySlot.has(slot)) freeBySlot.set(slot, new Set());
+          freeBySlot.get(slot)!.add(t.tutorSub);
+        }
       }
 
       const futureSlots = filterPastSlots(Array.from(dayFreeTimes)).sort();
 
       if (futureSlots.length > 0) {
-        allSlots.push({ date: dateStr, slots: futureSlots });
+        allSlots.push({
+          date: dateStr,
+          slots: futureSlots,
+          tutors: assignTutorsToSlots(freeBySlot, tutors),
+        });
       }
 
       current = addDays(current, 1);

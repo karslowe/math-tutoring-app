@@ -27,7 +27,7 @@ import {
   subtractBusyIntervals,
   zonedDateRangeToUtcISO,
 } from "@/lib/slots";
-import { chooseTutor } from "@/lib/booking-assignment";
+import { chooseTutor, resolveRequestedTutor } from "@/lib/booking-assignment";
 import { sessionLabel } from "@/lib/session-label";
 import {
   getFounderBusyIntervals,
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { scheduledAt, subject, useFreeCredit } = body;
+    const { scheduledAt, subject, useFreeCredit, tutorSub: requestedTutorSub } = body;
 
     if (!scheduledAt) {
       return NextResponse.json(
@@ -172,6 +172,23 @@ export async function POST(request: NextRequest) {
     let session: TutoringSession | null = null;
     let lastError: any = null;
 
+    // The booking page labels each slot with the tutor who'd teach it and
+    // sends that tutor back. Honor it while it's still true; if that tutor
+    // has since been taken, ask the student to pick again rather than
+    // silently handing them someone else. Clients that don't send a tutor
+    // (older tabs) keep the original system-assigned behavior.
+    const slotChangedResponse = () =>
+      NextResponse.json(
+        { error: "That time just changed. Please pick a time again.", code: "slot_changed" },
+        { status: 409 }
+      );
+    if (typeof requestedTutorSub === "string" && requestedTutorSub) {
+      if (!resolveRequestedTutor(requestedTutorSub, candidates).ok) {
+        return slotChangedResponse();
+      }
+      candidates = new Set([requestedTutorSub]);
+    }
+
     while (candidates.size > 0) {
       const chosenTutorSub = chooseTutor(candidates, tutors, preferredTutorSub);
       if (!chosenTutorSub) break;
@@ -206,6 +223,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (!session) {
+      if (typeof requestedTutorSub === "string" && requestedTutorSub) {
+        return slotChangedResponse();
+      }
       if (lastError) throw lastError;
       return NextResponse.json(
         { error: "This time slot is no longer available" },

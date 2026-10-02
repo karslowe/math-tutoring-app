@@ -22,3 +22,35 @@ export function chooseTutor(
   if (secondary) return secondary.sub;
   return null;
 }
+
+/**
+ * For the booking calendar: which tutor the system would assign to each open
+ * slot, using the same rule as chooseTutor. Shown to students as a label
+ * only; they never pick (ADR-0002).
+ */
+export function assignTutorsToSlots(
+  freeBySlot: Map<string, Set<string>>,
+  tutors: TutorIdentity[]
+): Record<string, { sub: string; name: string }> {
+  const out: Record<string, { sub: string; name: string }> = {};
+  for (const [slot, candidates] of Array.from(freeBySlot.entries())) {
+    const sub = chooseTutor(candidates, tutors, null);
+    const tutor = tutors.find((t) => t.sub === sub);
+    if (tutor) out[slot] = { sub: tutor.sub, name: tutor.name || tutor.email };
+  }
+  return out;
+}
+
+/**
+ * The student booked a slot labeled with a specific tutor. Honor that tutor
+ * while still free; if they've since been taken, refuse instead of silently
+ * assigning someone else, so the label the student saw is always true.
+ */
+export function resolveRequestedTutor(
+  requestedTutorSub: string,
+  candidates: Set<string>
+): { ok: true; tutorSub: string } | { ok: false } {
+  return candidates.has(requestedTutorSub)
+    ? { ok: true, tutorSub: requestedTutorSub }
+    : { ok: false };
+}

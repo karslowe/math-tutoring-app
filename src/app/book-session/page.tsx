@@ -12,6 +12,8 @@ import { format, parseISO, addDays } from "date-fns";
 interface DaySlots {
   date: string;
   slots: string[];
+  // Which tutor would teach each slot; shown as a label, not a choice.
+  tutors?: Record<string, { sub: string; name: string }>;
 }
 
 interface Booking {
@@ -28,6 +30,7 @@ export default function BookSessionPage() {
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [slotsData, setSlotsData] = useState<DaySlots[]>([]);
+  const [slotNotice, setSlotNotice] = useState("");
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
@@ -118,13 +121,28 @@ export default function BookSessionPage() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ scheduledAt: selectedSlot, subject, useFreeCredit }),
+      body: JSON.stringify({
+        scheduledAt: selectedSlot,
+        subject,
+        useFreeCredit,
+        // The tutor the student saw on this slot; the server refuses the
+        // booking instead of switching tutors if that's no longer true.
+        tutorSub: selectedDayTutors[selectedSlot]?.sub,
+      }),
     });
 
     if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.error || "Failed to book session");
+      const data = await res.json().catch(() => null);
+      if (data?.code === "slot_changed") {
+        setShowModal(false);
+        setSelectedSlot(null);
+        setSlotNotice(data.error);
+        await loadSlots();
+        return;
+      }
+      throw new Error(data?.error || `Failed to book session (server returned ${res.status})`);
     }
+    setSlotNotice("");
 
     setShowModal(false);
     setSelectedSlot(null);
@@ -164,6 +182,10 @@ export default function BookSessionPage() {
     ? slotsData.find((d) => d.date === selectedDateStr)?.slots || []
     : [];
 
+  const selectedDayTutors = selectedDateStr
+    ? slotsData.find((d) => d.date === selectedDateStr)?.tutors || {}
+    : {};
+
   return (
     <ProtectedRoute>
       <div className="max-w-4xl mx-auto px-4 py-8">
@@ -179,6 +201,12 @@ export default function BookSessionPage() {
         <h1 className="text-2xl font-bold text-gray-900 mb-6">
           Book a Session
         </h1>
+
+        {slotNotice && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {slotNotice}
+          </div>
+        )}
 
         <div className="grid md:grid-cols-2 gap-6">
           {/* Calendar */}
@@ -196,6 +224,7 @@ export default function BookSessionPage() {
               <TimeSlotPicker
                 date={selectedDateStr}
                 availableSlots={selectedDaySlots}
+                tutorBySlot={selectedDayTutors}
                 selectedSlot={selectedSlot}
                 onSlotSelect={handleSlotSelect}
                 loading={loadingSlots}
