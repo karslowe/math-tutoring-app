@@ -212,18 +212,13 @@ export async function requireTutor(request: {
     return { ok: false, status: 401, error: "Invalid token" };
   }
 
-  const idToken = request.headers.get("x-id-token");
-  if (idToken) {
-    try {
-      const decoded = jwtDecode<IdTokenPayload>(idToken);
-      const groups = decoded["cognito:groups"] || [];
-      if (isTutor(groups)) {
-        return { ok: true, user: { ...user, groups } };
-      }
-      return { ok: false, status: 403, error: "Tutor access required" };
-    } catch {
-      return { ok: false, status: 401, error: "Invalid ID token" };
-    }
+  // Read groups from the access token, which GetUser above has just verified
+  // (signature, expiry, revocation). The client's x-id-token header is never
+  // trusted: jwtDecode does not check signatures, so anyone signed in could
+  // forge one claiming the "tutors" group.
+  const groups = jwtDecode<IdTokenPayload>(accessToken)["cognito:groups"] || [];
+  if (isTutor(groups)) {
+    return { ok: true, user: { ...user, groups } };
   }
 
   const tutors = await listTutors();

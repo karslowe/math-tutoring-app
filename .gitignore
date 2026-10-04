@@ -33,3 +33,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .claude/worktrees/
+
+# local browser-automation snapshots (may contain real student data)
+.playwright-mcp/
