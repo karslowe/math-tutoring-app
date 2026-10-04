@@ -1,27 +1,40 @@
-# Math Tutoring App
+# KLMathPrep
 
-A Next.js web application for math tutoring, integrated with AWS services.
+**Live at [klmathprep.com](https://klmathprep.com)**: the platform I built to run my math tutoring business. Students and parents book sessions, upload work, and review notes. Tutors manage availability, write session notes, and get automated reminders. All of it runs serverless on AWS.
+
+## Features
+
+- **Booking:** students pick from open hourly slots. Each slot is the union of every tutor's weekly availability, minus booked sessions and busy times from tutors' Google Calendars. The system assigns the tutor.
+- **Session notes & files:** tutors write notes and attach worked material (direct-to-S3 presigned uploads). Students upload homework, scoped to their own S3 prefix.
+- **Family accounts:** a parent invites a student by email, and both see one shared household view of sessions, files, credits, and progress.
+- **Referrals & credits:** referral links grant free-session credits.
+- **Automated email:** confirmations, cancellations, and reminders through SES, driven by scheduled Lambdas.
+- **Two-tutor scheduling:** per-tutor availability, meeting rooms, and calendar sync (see [`docs/adr/`](docs/adr) for the design decisions).
 
 ## Architecture
 
-- **Frontend**: Next.js 14 (App Router) with Tailwind CSS
-- **Auth**: Amazon Cognito (user pools, groups for tutor/student roles)
-- **Storage**: S3 (student uploads scoped by Cognito sub, tutor-uploaded notes)
-- **Database**: DynamoDB (sessions, user profiles)
-- **Notifications**: SES emails triggered by EventBridge + Lambda (6-hour reminders)
-- **Hosting**: AWS Amplify
-
-## S3 Folder Structure
-
-```
-math-tutoring-files/
-├── students/
-│   └── {cognito-sub}/
-│       ├── uploads/          ← student's own uploaded files
-│       └── completed-notes/  ← tutor-uploaded session notes
+```mermaid
+flowchart LR
+    U["Students, parents, tutors"] --> APP["Next.js 14 app<br/>AWS Amplify (SSR)"]
+    APP -- "sign-in" --> COG["Cognito<br/>user pool + tutors group"]
+    APP -- "API routes" --> DDB[("DynamoDB<br/>users, sessions,<br/>availability, referrals")]
+    APP -- "presigned URLs" --> S3[("S3<br/>students/{sub}/...")]
+    APP -- "free/busy + events" --> GCAL["Google Calendar API"]
+    EB["EventBridge schedules"] --> LAM["Lambda (Node.js)<br/>reminders, weekly reset,<br/>token health"]
+    LAM --> DDB
+    LAM --> SES["SES email"]
+    APP --> SES
+    COG -- "pre-sign-up trigger" --> LAM
 ```
 
-Each student can only access files under their own `{cognito-sub}` prefix.
+| Layer | Tech |
+|-------|------|
+| Frontend | Next.js 14 (App Router), React, TypeScript, Tailwind CSS |
+| Auth | Amazon Cognito: every signed-in API route verifies the caller's token server-side; tutor routes also require the `tutors` group |
+| Data | DynamoDB, S3 |
+| Jobs & email | EventBridge → Lambda, SES |
+| Infra | CloudFormation ([`infrastructure/`](infrastructure)), AWS Amplify hosting |
+| Tests | Vitest (`npm test`) |
 
 ## Getting Started
 
@@ -82,28 +95,12 @@ npm run dev
 
 ### 8. Deploy to Amplify
 
-Connect your Git repository to AWS Amplify. The `amplify.yml` build config is included. Set the environment variables from `.env.local.example` in the Amplify console.
+Connect the repo to AWS Amplify. The `amplify.yml` build config is included. Set the environment variables from `.env.local.example` in the Amplify console.
 
 ## Pages
 
-| Route | Description |
-|-------|-------------|
-| `/` | Landing page |
-| `/auth/signin` | Sign in |
-| `/auth/signup` | Create account |
-| `/auth/confirm` | Verify email code |
-| `/auth/forgot-password` | Reset password |
-| `/dashboard` | Student dashboard |
-| `/my-files` | Upload & manage files |
-| `/completed-notes` | View tutor-uploaded notes |
-
-## API Routes
-
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/api/files/upload` | POST | Student file upload (scoped to their S3 prefix) |
-| `/api/files/list` | GET | List student's uploaded files |
-| `/api/files/delete` | DELETE | Delete student's own file |
-| `/api/tutor/upload` | POST | Tutor uploads completed notes for a student |
-| `/api/tutor/files` | GET | Student retrieves their completed notes |
-| `/api/sessions` | GET/POST | List/create tutoring sessions |
+| Area | Routes |
+|------|--------|
+| Public | `/`, `/privacy`, `/auth/*` |
+| Students & parents | `/dashboard`, `/book-session`, `/session-history`, `/completed-notes`, `/my-files`, `/progress`, `/family`, `/referrals`, `/survey`, `/settings` |
+| Tutors | `/tutor/schedule`, `/tutor/session-notes`, `/tutor/files`, `/tutor/upload` |
